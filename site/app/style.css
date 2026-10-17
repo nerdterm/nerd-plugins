@@ -48,6 +48,7 @@ button, input, select { font: inherit; color: inherit; }
 h1, h2, h3, h4 { font: inherit; margin: 0; }
 code, pre { font: inherit; }
 .faint { color: var(--faint); }
+.off { color: var(--text); }
 .muted { color: var(--muted); }
 .teal { color: var(--teal); }
 
