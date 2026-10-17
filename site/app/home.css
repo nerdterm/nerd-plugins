@@ -1,0 +1,178 @@
+/* home 7: the floor plan. Sizes come from the grid tokens in style.css (DESIGN.md). */
+.h7 a { color: var(--accent); text-decoration: none; }
+.h7 a:hover { text-decoration: underline; text-underline-offset: .2em; }
+.h7 code { color: var(--text); }
+.h7hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s6) var(--s7); align-items: start; padding-top: var(--s4); }
+@container home (min-width: 760px) { .h7hero { grid-template-columns: minmax(0, 1fr) minmax(0, 300px); } }
+.h7hero .h-logo { width: min(100%, 300px); }
+:root:not([data-theme="dark"]) .h7hero .h-logo .dk, :root[data-theme="dark"] .h7hero .h-logo .lt { display: none; }
+.h7txt h1 { font-family: var(--display); font-weight: 800; font-size: clamp(1.8em, 4.6cqw, 2.6em); line-height: round(up, 1.1em, 4px); letter-spacing: -.02em; margin: 0 0 var(--s4); max-width: 20ch; }
+.h7lede { font-family: var(--text-face); line-height: var(--line); color: var(--muted); margin: 0 0 var(--s5); max-width: 56ch; }
+.h7 .cmd { width: fit-content; max-width: 100%; margin: 0; }
+.h7 .cmd code { white-space: normal; }
+.h7 .cmd .nw { white-space: nowrap; }
+.h7 .cmd.go .btn { background: var(--accent); color: var(--on-fill); font-weight: 700; border-left: 0; }
+.h7 .cmd.go .btn:hover { background: var(--text); color: var(--ground); }
+@container home (max-width: 420px) {
+  .h7 .cmd { flex-wrap: wrap; width: 100%; }
+  .h7 .cmd code { flex: 1 0 100%; }
+  .h7 .cmd .btn { flex: 1 0 100%; height: var(--ctl); border-left: 0; border-top: 1px solid var(--border); }
+}
+.h7act { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0 0; }
+.h7act .btn { background: none; box-shadow: inset 0 0 0 1px var(--border); color: var(--text); }
+.h7act .btn:hover { box-shadow: inset 0 0 0 1px var(--text); background: none; text-decoration: none; }
+.h7fine { margin: var(--s4) 0 0; color: var(--faint); font-family: var(--text-face); line-height: var(--line); }
+
+/* the plan: the Mac is one unbroken wall; each door is a line out through a gap in it, to the door's name and the
+   line it writes. It lays itself out by its own width. */
+.h7plan { container: plan / inline-size; min-width: 0; margin-top: var(--s7); }
+.h7map { display: grid; grid-template-columns: minmax(0, 1fr); }
+.h7mac { position: relative; border: 1px solid var(--border); padding: var(--s5) var(--in) var(--in); }
+.h7t { position: absolute; top: 0; left: calc(var(--in) - .8ch); transform: translateY(-52%); z-index: 2; margin: 0; padding: 0 .8ch; background: var(--ground); color: var(--muted); font: inherit; line-height: round(up, 1.2em, 4px); white-space: nowrap; max-width: calc(100% - 3ch); overflow: hidden; text-overflow: ellipsis; }
+.h7rooms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.h7pl { position: relative; border: 1px solid var(--border); margin-top: var(--s5); padding: var(--s5) var(--s3) var(--s3); }
+.h7pg { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+/* equal columns rounded down to whole pixels; the last takes what is left, so every wall lands on a pixel */
+@container plan (min-width: 480px) { .h7pg { --c: round(down, calc((100% - 2 * var(--s4)) / 3), 1px); grid-template-columns: var(--c) var(--c) minmax(0, 1fr); } }
+.h7cap { margin: var(--s3) 0 0; color: var(--text); font-family: var(--text-face); line-height: var(--line); min-height: calc(2 * var(--line)); }
+.h7key { margin: var(--s2) 0 0; color: var(--faint); font-family: var(--text-face); line-height: var(--line); }
+
+/* a room: --w is its wall; a sandbox has a second wall inside the first */
+.h7r { --w: var(--border); position: relative; border: 1px solid var(--w); padding: var(--s5) var(--s4) var(--s3); cursor: pointer; min-width: 0; background: var(--ground); }
+.h7r.sb { --w: var(--muted); }
+.h7r.sb::before { content: ""; position: absolute; inset: 3px; border: 1px solid var(--w); pointer-events: none; }
+.h7r .h7t { left: calc(var(--s4) - .8ch); }
+.h7r:hover, .h7r.h7on { --w: var(--accent); background: var(--tint); }
+.h7r.h7rel { --w: var(--accent); }
+.h7r[aria-pressed="true"] .h7t, .h7d[aria-pressed="true"] b { color: var(--accent); font-weight: 700; }
+.h7b { position: relative; min-width: 0; }
+.h7b p { margin: 0; color: var(--muted); line-height: var(--line); font-family: var(--text-face); }
+.h7b .h7f { margin-top: var(--s2); }
+.h7b .h7f b { color: var(--warn); font-weight: 700; }
+
+/* a link: a 1px line with its label above; "to" arrives on the right, "back" on the left. Stacked on a phone: arrows down and up */
+.h7l { display: grid; gap: var(--s2); padding: var(--s3) 0 var(--s3) var(--s4); color: var(--faint); line-height: var(--line); }
+.h7a::before { content: "\2193  "; }
+.h7a.back::before { content: "\2191  "; }
+
+/* doors on a phone: a branch under the Mac, like a row in the site's panel; the branch leaves through a gap in the wall */
+.h7exits { position: relative; display: grid; gap: var(--s3); margin-left: var(--s4); padding: var(--s4) 0 0 var(--s5); border-left: 1px solid var(--border); }
+.h7exits::before { content: ""; position: absolute; top: -1px; left: -4px; width: 7px; height: 1px; background: var(--ground); box-shadow: 0 0 0 0 var(--ground); }
+.h7dh { margin: 0; color: var(--faint); font-family: var(--text-face); line-height: var(--line); }
+.h7d { --w: var(--border); position: relative; display: grid; gap: 0; padding: 0; cursor: pointer; min-width: 0; }
+.h7d::before { content: ""; position: absolute; top: calc(var(--line) / 2); left: calc(-1 * var(--s5)); width: calc(var(--s5) - var(--s2)); border-top: 1px solid var(--w); }
+.h7d b { font-weight: 400; color: var(--text); line-height: var(--line); }
+.h7d .w { color: var(--muted); line-height: var(--line); font-family: var(--text-face); }
+.h7d code { color: var(--faint); line-height: var(--line); overflow-wrap: anywhere; }
+/* a door's line out is the end of its data's path: it takes the second colour; the chosen door's name keeps the accent */
+.h7d:hover, .h7d.h7on, .h7d.h7rel { --w: var(--flow); }
+.h7d:hover b, .h7d.h7on b { color: var(--accent); }
+/* the line a door writes, while its data moves */
+.h7d:hover code, .h7d.h7on code, .h7d.h7rel code { color: var(--flow); }
+
+@container plan (min-width: 760px) {
+  /* the doors stand outside the Mac's right wall; each line crosses the wall through a gap with two jambs */
+  /* the Mac grows with its doors, so every door's line crosses its wall */
+  .h7map { grid-template-columns: minmax(0, 1fr) 256px; column-gap: var(--s6); align-items: stretch; }
+  .h7exits { margin: 0; padding: var(--s5) 0 0; border-left: 0; gap: var(--s4); align-content: start; }
+  .h7exits::before { content: none; }
+  .h7d::before { left: calc(-1 * var(--s6) - 1px); width: calc(var(--s6) + 1px - var(--s2)); z-index: 2; }
+  .h7d::after { content: ""; position: absolute; z-index: 1; top: calc(var(--line) / 2 - 5px); left: calc(-1 * var(--s6) - 4px); width: 7px; height: 11px; box-sizing: border-box; border-top: 1px solid var(--w); border-bottom: 1px solid var(--w); background: linear-gradient(var(--ground), var(--ground)) center / 1px 100% no-repeat; }
+  .h7rooms { grid-template-columns: round(down, calc((100% - 120px) / 2), 1px) 120px minmax(0, 1fr); grid-template-areas: "c l1 s" "p l2 s"; row-gap: var(--s4); align-items: stretch; }
+  .h7rooms > .cl { grid-area: c; } .h7rooms > .sv { grid-area: s; } .h7rooms > .pg { grid-area: p; }
+  .h7rooms > .l1 { grid-area: l1; } .h7rooms > .l2 { grid-area: l2; }
+  .h7l { align-content: center; gap: var(--s4); padding: 0 var(--s3); }
+  .h7a { position: relative; display: block; padding-bottom: var(--s1); border-bottom: 1px solid var(--faint); }
+  .h7a.to::before, .h7a.back::before { content: none; }
+  .h7a.back { text-align: right; }
+  .h7a::after { content: ""; position: absolute; bottom: -4px; border: 3.5px solid transparent; }
+  .h7a.to::after { right: -4px; border-left: 5px solid var(--faint); }
+  .h7a.back::after { left: -4px; border-right: 5px solid var(--faint); }
+}
+
+.h7k { margin: 0; color: var(--muted); line-height: var(--line); font-family: var(--text-face); }
+.h7k b { font-family: var(--mono); font-weight: 400; color: var(--text); }
+.h7sb { margin: 0 0 var(--s2); color: var(--text); font-weight: 700; line-height: var(--line); }
+
+.h7s { padding: var(--s5) 0 0; margin-top: var(--s5); border-top: 1px solid var(--border); min-width: 0; }
+.h7hd { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s1) var(--s4); flex-wrap: wrap; margin: 0 0 var(--s3); }
+.h7h { font-family: var(--display); font-weight: 700; font-size: 1.5em; letter-spacing: -.01em; line-height: var(--s5); margin: 0; }
+@container home (max-width: 619px) { .h7h { font-size: 1.3em; } }
+.h7p { font-family: var(--text-face); color: var(--muted); max-width: 70ch; margin: 0 0 var(--s3); line-height: var(--line); }
+.h7p b { color: var(--text); font-weight: 600; }
+.h7 .h7p + .rband, .h7 .rband + .h7p { margin-top: var(--s4); }
+.h7links { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); margin: var(--s3) 0 0; }
+.h7do { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; max-width: 70ch; }
+.h7do dt { font-weight: 700; color: var(--text); line-height: var(--line); margin-top: var(--s3); }
+.h7do dt:first-child { margin-top: 0; }
+.h7do dd { margin: 0; font-family: var(--text-face); color: var(--muted); line-height: var(--line); }
+@container home (min-width: 760px) { .h7do { grid-template-columns: 22ch minmax(0, 1fr); gap: var(--s3) var(--s5); } .h7do dt { margin: 0; } }
+
+/* data flows, in the second colour (--flow): a choice draws its doors' paths as a running dashed line, the links between
+   rooms run the same way, and the door's log line takes the colour while its data moves */
+.h7map { position: relative; }
+.h7flow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; overflow: visible; }
+.h7flow path { fill: none; stroke: var(--flow); stroke-width: 1.5; stroke-dasharray: 6 6; opacity: 0; transition: opacity .12s; }
+.h7flow path.h7on { opacity: 1; animation: h7run .7s linear infinite; }
+@keyframes h7run { to { stroke-dashoffset: -12; } }
+@container plan (min-width: 760px) {
+  .h7a.h7on { color: var(--flow); border-bottom-color: transparent; background: repeating-linear-gradient(90deg, var(--flow) 0 6px, transparent 6px 12px) left bottom / 100% 1px no-repeat; animation: h7dash .7s linear infinite; }
+  .h7a.back.h7on { animation-direction: reverse; }
+  .h7a.to.h7on::after { border-left-color: var(--flow); }
+  .h7a.back.h7on::after { border-right-color: var(--flow); }
+}
+@keyframes h7dash { from { background-position: 0 100%; } to { background-position: 12px 100%; } }
+.h7a.h7on { color: var(--flow); }
+@media (prefers-reduced-motion: reduce) {
+  .h7flow path.h7on, .h7a.h7on { animation: none; }
+  .h7flow path { stroke-dasharray: none; }
+}
+
+/* below the plan: nerd's README, set on the grid; two columns where the page is wide enough */
+.h7two { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4) var(--s7); align-items: start; }
+@container home (min-width: 760px) { .h7two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.h7 .h7two .cmd { margin: 0 0 var(--s3); }
+.h7 .cmd code.pre { white-space: pre; }
+.h7 ul { margin: 0; padding-left: 2ch; }
+.h7 li { margin: 0 0 var(--s2); color: var(--muted); font-family: var(--text-face); line-height: var(--line); }
+.h7 li strong, .h7 li b { color: var(--text); font-weight: 600; }
+.h7 li code, .h7 .h7p code, .h7 td code { color: var(--text); font-family: var(--mono); }
+.h7sub { margin: 0 0 var(--s2); font-weight: 700; color: var(--text); line-height: var(--line); }
+.h7note { margin-top: var(--s3); }
+
+/* the agents table scrolls inside its own box on a phone and never widens the page */
+.h7 .table { overflow-x: auto; border: 1px solid var(--border); }
+.h7 table { width: 100%; border-collapse: collapse; min-width: 640px; }
+.h7 th, .h7 td { text-align: left; vertical-align: top; padding: var(--s1) var(--s3) 3px; border-bottom: 1px solid var(--border); line-height: var(--line); }
+.h7 tr:last-child td { border-bottom: 0; padding-bottom: var(--s1); }
+.h7 th { color: var(--faint); font-weight: 400; }
+.h7 td { color: var(--muted); font-family: var(--text-face); }
+.h7 td:first-child { color: var(--text); font-family: var(--mono); white-space: nowrap; }
+
+/* what else: the README's bullets in two columns, each a title and its words */
+.h7feats { list-style: none; padding: 0 !important; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4) var(--s7); }
+@container home (min-width: 760px) { .h7feats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.h7feats li { margin: 0; }
+
+/* plugins: rows from the catalog */
+.h7rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin: var(--s3) 0 0; }
+@container home (min-width: 760px) { .h7rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.h7 a.h7row { background: var(--ground); padding: var(--s3) var(--s4) var(--s4); display: grid; gap: var(--s2); align-content: start; color: var(--text); text-decoration: none; min-width: 0; }
+.h7 a.h7row:hover { background: var(--hov-fill); }
+.h7row b { color: var(--accent); }
+.h7row > span:not(.h7mt) { font-family: var(--text-face); color: var(--muted); line-height: var(--line); }
+.h7mt { display: flex; align-items: center; gap: var(--s4); color: var(--faint); }
+.h7st { margin-left: auto; }
+
+/* a sequence reads top to bottom in one column: the commands, then the steps that follow them */
+.h7seq { max-width: 78ch; }
+.h7 .h7seq .cmd { margin: 0 0 var(--s3); }
+.h7seq .h7p { margin: 0 0 var(--s2); }
+
+/* a list long enough for two columns flows into them, item by item, on a wide page */
+@container home (min-width: 760px) { .h7cols ul { columns: 2; column-gap: var(--s7); } .h7cols li { break-inside: avoid; } }
+.h7two .cmd.go { margin-top: var(--s3); }
+
+/* a plugin card: its marks and stars sit on the card's last line, the same line across a row, however long the summary */
+.h7 a.h7row { display: flex; flex-direction: column; }
+.h7row .h7mt { margin-top: auto; }

@@ -1,0 +1,32 @@
+/* the catalog's front page: it borrows the home page's parts (home.css, prefix h7); only what is its own is here */
+.cf .h7plan { margin-top: var(--s7); }
+.cf-pick { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s5); }
+.cf-pick .btn { background: none; box-shadow: inset 0 0 0 1px var(--border); color: var(--muted); font-weight: 400; }
+.cf-pick .btn[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+.cf-gain { color: var(--flow); }
+.cf .h7fine b { color: var(--text); font-weight: 600; }
+
+/* the sandbox holds one room, the program */
+.cf-box { padding: var(--s5) var(--in) var(--in); }
+.cf-prog .h7b p { margin: 0 0 var(--s2); }
+.cf-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s4); color: var(--faint); font-family: var(--mono) !important; }
+.cf-sb { color: var(--text) !important; font-weight: 600 !important; }
+
+/* a door walled off: no gap in the wall and no line through it; a short line stops at the wall with a tick */
+.cf-d .w { display: block; }
+.cf-d.shut b, .cf-d.shut .w { color: var(--faint); }
+.cf-d.shut::before { border-top-style: dotted; }
+@container plan (min-width: 760px) {
+  .cf-d.shut::before { left: calc(-1 * var(--s6) + 8px); width: calc(var(--s6) - var(--s2) - 8px); }
+  .cf-d.shut::after { background: none; border: 0; border-left: 1px solid var(--w); width: 1px; left: calc(-1 * var(--s6) + 8px); }
+}
+
+.cf-steps { padding: 0 !important; }
+
+/* the sandbox is as tall as its doors, so every door's line meets its wall */
+@container plan (min-width: 760px) { .cf .h7map { align-items: stretch; } }
+
+/* inside the sandbox, under the program: what its profile lets it read and write */
+.cf-in { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s5) var(--s4); margin-top: var(--s5); }
+@container plan (min-width: 480px) { .cf-in { --c: round(down, calc((100% - var(--s4)) / 2), 1px); grid-template-columns: var(--c) minmax(0, 1fr); } }
+.cf-rw code { color: var(--text); font-family: var(--mono); }

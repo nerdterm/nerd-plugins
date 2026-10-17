@@ -1,0 +1,1 @@
+{"abilities":["Speaks for the agent hooky, adding nerd's hooks to ~/.hooky/h.json"],"platforms":["macos"],"min_nerd":null,"readme":"# Hooky <script>alert(1)</script>\n\n[x](javascript:alert(1))\n\n<img src=x onerror=alert(1)>","cast":null,"manifest":{"name":"hooky","version":"2.0.0","agent":{"names":["hooky"]},"permissions":{"write":["~/.hooky"]}},"licence":"MIT"}

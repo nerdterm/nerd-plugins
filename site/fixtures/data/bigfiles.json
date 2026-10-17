@@ -1,0 +1,1 @@
+{"abilities":["Shows badges in the tree","Runs /bin/sh"],"platforms":[],"min_nerd":"0.6.0","readme":"# Big files\n\nMarks them.","cast":"{\"version\": 2, \"width\": 80, \"height\": 24}\n[0.1, \"o\", \"hello\"]\n","manifest":{"name":"bigfiles","version":"1.0.0","min_nerd":"0.6.0","badges":["tree"]},"licence":"MIT"}

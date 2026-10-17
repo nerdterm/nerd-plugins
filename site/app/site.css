@@ -1,0 +1,75 @@
+/* Site-wide additions shared by every page: the status line, the site map, one control height. */
+/* The status line: the version, GitHub and the theme at the right, the last ending on the page frame's right edge;
+   cells split by 1px lines. */
+#status { display: flex; justify-content: flex-end; gap: 0; padding: 0 var(--gut) 0 0; }
+#status > * { align-self: stretch; display: flex; align-items: center; min-width: 0; }
+#status .s-link { padding: 0 var(--s3); border-left: 1px solid var(--border); color: var(--muted); text-decoration: none; }
+#status .s-link:hover { color: var(--text); background: var(--hov); }
+#status .s-link[aria-current] { color: var(--accent); }
+#status .theme { margin: 0; padding: 0; border-left: 1px solid var(--border); }
+/* the theme reads like the links beside it: plain words, the chosen one in the accent colour */
+#status .theme { gap: 0; font-size: inherit; padding-left: 0; }
+#status .theme button { align-self: stretch; padding: 0 var(--s2); line-height: inherit; color: var(--muted); }
+#status .theme button:first-child { padding-left: var(--s3); }
+#status .theme button:hover { color: var(--text); background: var(--hov); }
+#status .theme button.on, #status .theme button.on:hover { background: none; color: var(--accent); }
+#status .theme button.on:hover { background: var(--hov); }
+@media (max-width: 860px) {
+  /* a phone keeps the version, GitHub and the theme, on the page's 16px gutters */
+  #status { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; padding: 0 var(--gut); }
+  #status .s-link { padding: 0 var(--s3); }
+  #status .s-link:first-of-type { padding-left: 0; border-left: 0; }
+  #status .theme { grid-column: 4; border-left: 0; padding: 0; }
+  #status .theme button:last-child { padding-right: 0; }
+}
+@media (max-width: 400px) { #status .s-gh { display: none; } }
+
+/* The site map: section names are labels, not switches; a page under a page sits one level in, its guide hanging
+   from the parent's label, the parent's line running on beside it unless the parent is the section's last row. */
+#tree .sec > .h { cursor: default; }
+#tree .sec > .h:hover { color: var(--muted); }
+.tr.sub { --stem2: calc(var(--stem) + 2.7ch); padding-left: 3.9ch; }
+.tr.sub::before { content: ""; position: absolute; left: var(--stem); top: 0; bottom: 0; border-left: 1px solid var(--border); }
+.tr.sub.plast::before { content: none; }
+.tr.sub .g::before, .tr.sub .g::after { left: var(--stem2); }
+.tr.sub .l { color: var(--muted); }
+.tr.sub:hover .l, .tr.sub.on .l { color: inherit; }
+.tr.on.sub::before { border-color: var(--border); }
+@media (max-width: 860px) {
+  #tree .tr.sub { padding-left: 5.6ch; }
+  #tree .tr.sub::before { content: none; }
+}
+@media (max-width: 860px) {
+  /* the whole map shows at once: the menu runs down to the status line, and its rows are tighter */
+  body.drawer #tree { max-height: none; bottom: 38px; }
+  #tree .tr { padding-block: 2px; }
+  #tree .sec > .h { padding-top: var(--s2); padding-bottom: 0; }
+}
+
+/* A phone's top row: the logo, the search field taking the room between, the menu button. While searching, the
+   field covers the whole row, and what it finds drops under it at the same edges. */
+@media (max-width: 860px) {
+  #bar { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 0; }
+  #tq { grid-column: 2; grid-row: 1; align-self: center; }
+  #tq .tqf { height: 26px; }
+  #drawerBtn { grid-column: 3; }
+  body.tq-on .brand, body.tq-on #drawerBtn { visibility: hidden; }
+  body.tq-on #tq { grid-column: 1 / -1; }
+}
+
+/* One height for every control: fields, buttons, menus and selects share the search field's 28px. */
+:root { --ctl: 28px; }
+@media (min-width: 1900px) { :root { --ctl: 32px; } }
+.btn, a.btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--ctl); padding-block: 0; }
+select { height: var(--ctl); padding-block: 0; }
+.qin { height: var(--ctl); padding-block: 0; }
+.tqf { height: var(--ctl); }
+@media (max-width: 860px) {
+  #tq .tqf { height: var(--ctl); }
+  #drawerBtn { width: var(--ctl); height: var(--ctl); }
+}
+/* the wordmark is 85.3px wide at 20px high; its box is a whole 88 so the field beside it starts on a whole pixel */
+@media (max-width: 860px) { .brand { width: 88px; } }
+
+/* a menu that would cross the window's right edge opens to the left of its button instead (set when it opens) */
+.dd.flip .menu { left: auto; right: 0; }

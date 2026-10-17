@@ -1,0 +1,18 @@
+# Plugins
+
+## Manifest
+
+A plugin is a folder with a `plugin.json`. How far it reaches is under [Network](#network), and what it adds is in
+[Quick start](#quick-start).
+
+### Network
+
+A plugin reaches nothing unless its manifest says so.
+
+## Sandbox
+
+A plugin runs in its own sandbox.
+
+**What a plugin can read.** Every file the user can, except `~/.ssh`, `~/.aws`, the shell histories, the whole of
+`~/Library` (keychains, cookies) and nerd's state root (sessions, logs); inside the state root it reads only its own
+folder. **It can read the command line and the environment of every program you run.**

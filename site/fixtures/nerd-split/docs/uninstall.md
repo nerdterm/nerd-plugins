@@ -1,0 +1,5 @@
+# Uninstall
+
+```sh
+nerd --uninstall
+```

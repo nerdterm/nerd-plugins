@@ -1,0 +1,98 @@
+name: review
+
+# The workflow and scripts/review.sh always come from the base branch, never from the pull request: a pull request
+# that edits them changes nothing that runs. Its files are fetched as data; only the plugin itself runs, inside
+# nerd's sandbox with no network, and only after the maintainer approves the run in the `catalog-review` environment:
+# pull_request_target runs every fork's pull request, and this runner is the catalog's review machine. No job that
+# touches pull request files has a token that can write, or a secret.
+on:
+  pull_request_target:
+    paths: ['plugins/**']
+
+permissions: {}
+
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  hold:
+    # A new push is unreviewed until its own review ends: the old approval never carries over.
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      actions: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr edit "$PR" --repo "$REPO" --add-label needs-maintainer --remove-label auto-approve
+          # GitHub makes a missing environment on the spot, with no reviewer: then nothing would wait for the maintainer.
+          reviewers=$(gh api "repos/$REPO/environments/catalog-review" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' || echo 0)
+          [ "$reviewers" -ge 1 ] || { echo "the catalog-review environment has no required reviewer: no plugin runs until it has one" >&2; exit 1; }
+
+  review:
+    needs: hold
+    environment: catalog-review
+    runs-on: [self-hosted, macOS, catalog-review]
+    timeout-minutes: 20
+    outputs:
+      auto: ${{ steps.review.outputs.auto }}
+    steps:
+      - name: the review, from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+      - name: the pull request, as data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - id: review
+        name: review the entry
+        working-directory: pr
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          YARA_RULES: /opt/catalog-review/yara/rules.yar
+        run: |
+          rm -rf ../out
+          if ../trusted/scripts/review.sh "$BASE" ../out; then ok=true; else ok=false; fi
+          auto=$(jq -r 'if .auto == true then "yes" else "no" end' ../out/result.json 2>/dev/null || echo no)
+          [ "$ok" = true ] || auto=no
+          echo "auto=$auto" >> "$GITHUB_OUTPUT"
+          $ok
+      - name: keep the result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: review
+          # What the plugin printed stays on the runner: it can read the runner's files.
+          path: |
+            out/result.json
+            out/check.json
+          retention-days: 30
+
+  label:
+    needs: review
+    if: needs.review.outputs.auto == 'yes'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          REVIEWED: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Only the commit that was reviewed: a push since then waits for its own review.
+          head=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)
+          [ "$head" = "$REVIEWED" ] || { echo "the pull request moved on since this review"; exit 0; }
+          gh pr edit "$PR" --repo "$REPO" --add-label auto-approve --remove-label needs-maintainer

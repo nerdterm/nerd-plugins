@@ -1,0 +1,1 @@
+{"abilities":["Runs /bin/sh","Reaches only wttr.in on port 443, through nerd's filter: it looks up no names itself"],"platforms":["macos"],"min_nerd":"0.9.1","readme":"# Netty","cast":null,"manifest":{"name":"netty","version":"0.1.0","min_nerd":"0.9.1","permissions":{"network":{"hosts":["wttr.in"],"ports":[443]}},"segments":[{"id":"w"}]},"licence":"MIT"}
