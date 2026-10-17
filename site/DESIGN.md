@@ -107,7 +107,9 @@ and the panel keeps its scroll. History (recently viewed plugins) lives in the s
 
 - The palette is nerd's (`style.css` `:root` and `:root[data-theme="dark"]`); use the variables, never a raw
   colour. Both themes must work; System follows the OS.
-- Greys stay neutral. One accent, one meaning: the accent marks what is chosen, active or a link.
+- Greys stay neutral. One accent, one meaning: the accent marks what is chosen, active or a link. The one other use is the
+  **nerd | official** chip (`.off`): `nerd` on the accent, then `official` in it, its title the full text, the words
+  its own fallback.
 - **The second colour, `--flow` (lavender), means movement, and nothing else:** data travelling, or a change over time. It is the accent's twin:
   the same OKLCH lightness and chroma, at hue 300 (dark `#CAB0FB`, 9.75:1 on the ground; light `#7850B1`, 5.62:1;
   the accent is `#9FD08A` / `#2E7D1F` at hue 137). Use it only for movement: a path of data drawn

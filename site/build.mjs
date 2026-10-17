@@ -2,7 +2,7 @@
 // One page (index.html, the catalog embedded as JSON), catalog.json (the same data) and nerd-docs.js (nerd's README.md,
 // docs/*.md except the contributors' rules, CHANGELOG.md and SECURITY.md, so the pages about nerd say what its repository says). Everything shown is derived:
 // dates and versions from this repository's git history, stars from stars.json and its history, what a plugin may do
-// from `nerd --plugin-check` and its plugin.json at the catalog's commit. Only `featured` is set by hand.
+// from `nerd --plugin-check` and its plugin.json at the catalog's commit. Only `featured` and official.json are set by hand.
 // The page loads nothing from anywhere else, sets no cookie and counts nothing.
 
 import { execFileSync } from 'node:child_process';
@@ -477,7 +477,16 @@ function nerdVersion(nerd) {
  * decide abilities and the newest nerd (default `nerd` on PATH); `opts.today` (YYYY-MM-DD) and `opts.nerd` stand in
  * for the clock and its version.
  */
+/** official.json: the plugin names the maintainer has made official; unreadable or malformed is none (fail closed). */
+export function officialNames(root) {
+  try {
+    const v = JSON.parse(fs.readFileSync(path.join(root, 'official.json'), 'utf8'));
+    return new Set(Array.isArray(v) ? v.filter((n) => typeof n === 'string' && /^[a-z0-9-]+$/.test(n)) : []);
+  } catch { return new Set(); }
+}
+
 export function catalog(root, dataDir, opts = {}) {
+  const approved = officialNames(root);
   const today = opts.today ?? isoDay(new Date());
   const nerdBin = opts.nerdBin ?? 'nerd';
   const newest = opts.nerd !== undefined ? opts.nerd : nerdVersion(nerdBin);
@@ -531,7 +540,7 @@ export function catalog(root, dataDir, opts = {}) {
         // Only a plain GitHub address is shown, so the install command needs no quoting.
         url: GITHUB.test(e.url) ? e.url : '',
         author: owner,
-        official: isOfficial(e, d.tagCommit),
+        official: approved.has(e.name) && isOfficial(e, d.tagCommit),
         featured: e.featured === true,
         version: String(e.version ?? ''),
         tag: String(e.tag ?? ''),

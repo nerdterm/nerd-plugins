@@ -254,7 +254,7 @@
   function cardHtml(p, right, rank) {
     const id = p.cast ? 'pl' + ++S.uid : '';
     if (id) pending.push(() => mount(id, p, true));
-    return `<a class="frame card" href="#/plugin/${esc(p.name)}"><h3 class="t">${rank ? `<span class="rank">${rank}</span>` : ''}${esc(p.name)}</h3><span class="t r">${right}</span><div class="body">${id ? `<div class="still-box"><div id="${id}" class="still"></div></div>` : sketchHtml(p)}<span>${esc(p.summary)}</span><span class="meta">${roomIcons(p)}<span class="faint">${esc(p.author)}</span>${p.official ? '<b class="off">Official</b>' : ''}</span></div></a>`;
+    return `<a class="frame card" href="#/plugin/${esc(p.name)}"><h3 class="t">${rank ? `<span class="rank">${rank}</span>` : ''}${esc(p.name)}</h3><span class="t r">${right}</span><div class="body">${id ? `<div class="still-box"><div id="${id}" class="still"></div></div>` : sketchHtml(p)}<span>${esc(p.summary)}</span><span class="meta">${roomIcons(p)}<span class="faint">${esc(p.author)}</span>${p.official ? '<span class="off" title="Official: published by the nerd project"><b>nerd</b>official</span>' : ''}</span></div></a>`;
   }
 
   function catalogView(rt) {
@@ -358,7 +358,7 @@
         p.unavailable ? '<p class="notice warn"><b>Source unavailable at build time.</b> The catalog could not read this release from its repository when this page was built, so what it may do in detail, its README and its recording are not shown. Its risk level and review mark are the catalog’s.</p>' : '',
       ].join('');
       body = `${notices}<p class="sum">${esc(p.summary)}</p>
-        <div class="row"><span>by <a href="#/author/${encodeURIComponent(p.author)}">${esc(p.author)}</a>${p.official ? ' <b class="off">Official</b>' : ''}</span><a class="mk" href="#/plugin/${esc(p.name)}/review">${markIcon(p.review)}</a>${roomIcons(p)}</div>
+        <div class="row"><span>by <a href="#/author/${encodeURIComponent(p.author)}">${esc(p.author)}</a>${p.official ? ' <span class="off" title="Official: published by the nerd project"><b>nerd</b>official</span>' : ''}</span><a class="mk" href="#/plugin/${esc(p.name)}/review">${markIcon(p.review)}</a>${roomIcons(p)}</div>
         <h3 class="sect">Install</h3>${cmdBox(install(p))}${(p.notes || []).map((n) => `<p class="note">${esc(n)}</p>`).join('')}
         ${p.official ? `<h3 class="sect">Official: published by the nerd project</h3>
         <dl class="facts">

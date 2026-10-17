@@ -47,7 +47,7 @@ const data = (over) => ({ abilities: ['Runs /bin/sh'], platforms: [], min_nerd: 
 /** alpha: two releases, the second reaching the network and featured; beta: warned about; gamma: revoked. */
 function fixtureCatalog() {
   const root = catalogRepo([
-    ['2026-06-01', { 'stars.json': { changed: '2026-06-01', stars: { alpha: 10 } }, 'revoked.json': '[]' }],
+    ['2026-06-01', { 'stars.json': { changed: '2026-06-01', stars: { alpha: 10 } }, 'revoked.json': '[]', 'official.json': '["alpha"]' }],
     ['2026-07-01', { 'plugins/alpha.json': entry({ url: 'https://github.com/nerdterm/alpha' }) }],
     // The same release marked again later: it keeps the mark it entered the catalog with.
     ['2026-07-05', { 'plugins/alpha.json': entry({ url: 'https://github.com/nerdterm/alpha', review: 'reviewed' }) }],
@@ -123,6 +123,12 @@ test("official is nerdterm's own repository whose tag is the entry's commit, nev
   assert.deepEqual([beta.official, moved.official], [false, false], 'the entry\'s own "official" has no effect');
   const page = catalog(root, dir, { nerdRepo, today: '2026-10-05', nerd: null }).data.plugins;
   assert.deepEqual(page.map((p) => [p.name, p.official]), [['alpha', true], ['beta', false], ['gamma', false]]);
+  // Only the maintainer's official.json grants it (the claims catalog above has none at all).
+  const list = (v) => { fs.writeFileSync(path.join(root, 'official.json'), v); return catalog(root, dir, { nerdRepo, today: '2026-10-05', nerd: null }).data.plugins.map((p) => [p.name, p.official]); };
+  assert.deepEqual(list('[]'), [['alpha', false], ['beta', false], ['gamma', false]], 'not on the list');
+  assert.deepEqual(list('{"alpha": true}'), [['alpha', false], ['beta', false], ['gamma', false]], 'not a list');
+  assert.deepEqual(list('not json'), [['alpha', false], ['beta', false], ['gamma', false]], 'unreadable');
+  assert.deepEqual(list('["alpha", "beta"]'), [['alpha', true], ['beta', false], ['gamma', false]], 'beta is listed but lives under another owner');
 });
 
 test('stars gained are the count now less the count on the day, or since the oldest count', () => {
@@ -609,7 +615,7 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
       rec: !!D.querySelector('.frame.rec'), player: !!D.querySelector('.rec [id^=pl]'), ctl: txt(D.querySelector('.rec .ctl')),
       rooms: all(D, '.rband .rcell').map((c) => [c.className, txt(c)]), readme: txt(D.querySelector('.readme')),
       tabs: all(D, '.ptabs a').map(txt), install: txt(D.querySelector('.info .cmd code')),
-      mark: all(D, '.off').map(txt), official: all(D, '.sect').map(txt).filter((t) => t.startsWith('Official')), check: all(D, '.info .cmd code').map(txt)[1],
+      mark: all(D, '.off').map((n) => n.getAttribute('title')), official: all(D, '.sect').map(txt).filter((t) => t.startsWith('Official')), check: all(D, '.info .cmd code').map(txt)[1],
     };
     const pause = D.querySelector('.rec [data-act=toggle]');
     pause.click(); await sleep(500);
@@ -839,7 +845,7 @@ ui('a plugin page shows the recording, the four rooms, the README and the Relate
   assert.deepEqual(r.plugin.tabs, ['Overview', 'Review', 'Releases', 'Related 1']);
   assert.equal(r.plugin.install, 'nerd --plugin-add https://github.com/nerdterm/alpha');
   assert.deepEqual(r.plugin.related, ['gamma']);
-  assert.deepEqual([r.plugin.mark, r.plugin.official], [['Official'], ['Official: published by the nerd project']]);
+  assert.deepEqual([r.plugin.mark, r.plugin.official], [['Official: published by the nerd project'], ['Official: published by the nerd project']]);
   assert.equal(r.plugin.check, `git ls-remote https://github.com/nerdterm/alpha refs/tags/v1.1.0`, 'the command that shows the tag is the commit');
   assert.deepEqual(r.plugin.clipped, { 320: [], 1024: [], 1280: [] }, 'no room heading is cut off');
   assert.deepEqual(r.plugin.toggle, ['Play', 'Pause'], 'the page\'s own button pauses and plays the recording');

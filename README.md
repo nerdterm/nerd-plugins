@@ -38,6 +38,13 @@ nerd installs exactly `commit`, and refuses when `tag` no longer points at it. `
 `nerd --plugin-check --json` says; nerd recomputes it and refuses an entry that disagrees. `review` is set by the
 review, not by you: open the pull request with `"review": "checked"`.
 
+Official is set only by the maintainer, in `official.json`: a list of plugin names. A plugin is marked
+**nerd | official** on the site only when its name is on that list, its `url` is `https://github.com/nerdterm/<repo>`,
+and the build finds `tag` in that repository pointing at `commit` (only the nerd project can tag its own
+repositories). An entry that carries `official` itself is refused, and a pull request that changes `official.json`
+is never reviewed or approved by the machine: the maintainer merges it, or nobody does. Anyone can check the mark
+with the `git ls-remote` command its plugin page shows.
+
 An entry may also carry `"featured": true`, which puts the plugin under Featured on the site. It is set by the
 catalog's maintainer, not by you: a pull request that adds, removes or changes it is never approved automatically.
 
@@ -127,7 +134,7 @@ nothing from elsewhere at view time (its Content-Security-Policy allows only its
 fonts, and vendors asciinema-player (Apache-2.0) for recordings. The logo in `site/brand/` is nerd's, copied
 unchanged from nerd's repository.
 
-Nothing on the site is kept by hand except `featured`; the rest is derived:
+Nothing on the site is kept by hand except `featured` and `official.json`; the rest is derived:
 
 - the day a plugin was added: the first commit of `plugins/<name>.json`; its releases: every tag that file has held,
   each with the day of the commit that first held it, and the review mark and risk at that commit;
