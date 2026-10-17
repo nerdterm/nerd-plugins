@@ -615,7 +615,7 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
       rec: !!D.querySelector('.frame.rec'), player: !!D.querySelector('.rec [id^=pl]'), ctl: txt(D.querySelector('.rec .ctl')),
       rooms: all(D, '.rband .rcell').map((c) => [c.className, txt(c)]), readme: txt(D.querySelector('.readme')),
       tabs: all(D, '.ptabs a').map(txt), install: txt(D.querySelector('.info .cmd code')),
-      mark: all(D, '.off').map((n) => n.getAttribute('title')), official: all(D, '.sect').map(txt).filter((t) => t.startsWith('Official')), check: all(D, '.info .cmd code').map(txt)[1],
+      mark: all(D, '.off').map((n) => n.getAttribute('data-tip')), official: all(D, '.sect').map(txt).filter((t) => t.startsWith('Official')), check: all(D, '.info .cmd code').map(txt)[1],
     };
     const pause = D.querySelector('.rec [data-act=toggle]');
     pause.click(); await sleep(500);
