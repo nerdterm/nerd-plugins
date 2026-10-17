@@ -3,8 +3,8 @@ name: review
 # The workflow and scripts/review.sh always come from the base branch, never from the pull request: a pull request
 # that edits them changes nothing that runs. Its files are fetched as data; only the plugin itself runs, inside
 # nerd's sandbox with no network, and only after the maintainer approves the run in the `catalog-review` environment:
-# pull_request_target runs every fork's pull request, and this runner is the catalog's review machine. No job that
-# touches pull request files has a token that can write, or a secret.
+# pull_request_target runs every fork's pull request. The review runs on a fresh GitHub-hosted macOS machine that is
+# thrown away after the run. No job that touches pull request files has a token that can write, or a secret.
 on:
   pull_request_target:
     paths: ['plugins/**']
@@ -36,8 +36,11 @@ jobs:
   review:
     needs: hold
     environment: catalog-review
-    runs-on: [self-hosted, macOS, catalog-review]
+    runs-on: macos-15
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     outputs:
       auto: ${{ steps.review.outputs.auto }}
     steps:
@@ -47,6 +50,47 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           path: trusted
           persist-credentials: false
+      - name: nerd's latest release, checked against the .sha256 published with it
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/dl" && cd "$RUNNER_TEMP/dl"
+          tag=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/nerdterm/nerd/releases/latest)
+          tag=${tag##*/}
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no latest release of nerd: $tag" >&2; exit 1; }
+          a=nerd-$tag-macos-arm64.tar.gz
+          curl -fsSL --retry 3 -O "https://github.com/nerdterm/nerd/releases/download/$tag/$a" -O "https://github.com/nerdterm/nerd/releases/download/$tag/$a.sha256"
+          shasum -a 256 -c "$a.sha256"
+          tar -xzf "$a" nerd && install -m 755 nerd "$RUNNER_TEMP/bin/nerd"
+          case "$("$RUNNER_TEMP/bin/nerd" --version)" in
+            "nerd ${tag#v} "*) ;;
+            *) echo "the installed nerd is not $tag" >&2; exit 1 ;;
+          esac
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: the scanners, each at a pinned version and checksum
+        run: |
+          cd "$RUNNER_TEMP/dl"
+          get() { curl -fsSL --retry 3 -o "$2" "$1" && echo "$3  $2" | shasum -a 256 -c -; }
+          # Gitleaks 8.30.1
+          get https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz gitleaks.tar.gz b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5
+          tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP/bin" gitleaks
+          # OSV-Scanner 2.6.0
+          get https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_darwin_arm64 osv-scanner 98c460dcd37de25819babd757d04542045b6243113e209edcd4d89fedb0256b4
+          install -m 755 osv-scanner "$RUNNER_TEMP/bin/osv-scanner"
+          # jq 1.8.2
+          get https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-arm64 jq 2d75340ba57a4b4b4c8708a21c2dc8e958a48aaa8bba13b27f77f6e4c0eca07e
+          install -m 755 jq "$RUNNER_TEMP/bin/jq"
+          # YARA-X 1.21.0 (yr): YARA publishes no macOS build.
+          get https://github.com/VirusTotal/yara-x/releases/download/v1.21.0/yara-x-v1.21.0-aarch64-apple-darwin.tar.gz yara-x.tar.gz 03ba0bc33552b324e9efd77852875779cc63f6c18d6e7b53665cb91aad67451a
+          tar -xzf yara-x.tar.gz -C "$RUNNER_TEMP/bin" yr
+          # YARA Forge core rules, release 20260927
+          get https://github.com/YARAHQ/yara-forge/releases/download/20260927/yara-forge-rules-core.zip yara-forge.zip 16180800cc2f077638d2e13a33bd68609d0b6eedd1fbfdbae6d5d4a1c53f826f
+          unzip -q yara-forge.zip -d "$RUNNER_TEMP/yara-forge"
+          # GuardDog 3.2.0 and every package it needs, by hash: scripts/guarddog-requirements.txt from the base branch
+          python -m venv "$RUNNER_TEMP/guarddog"
+          "$RUNNER_TEMP/guarddog/bin/python" -I -m pip install --quiet --no-cache-dir --disable-pip-version-check --require-hashes --only-binary :all: -r "$GITHUB_WORKSPACE/trusted/scripts/guarddog-requirements.txt"
+          ln -s "$RUNNER_TEMP/guarddog/bin/guarddog" "$RUNNER_TEMP/bin/guarddog"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: the pull request, as data
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,7 +104,7 @@ jobs:
         working-directory: pr
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
-          YARA_RULES: /opt/catalog-review/yara/rules.yar
+          YARA_RULES: ${{ runner.temp }}/yara-forge/packages/core/yara-rules-core.yar
         run: |
           rm -rf ../out
           if ../trusted/scripts/review.sh "$BASE" ../out; then ok=true; else ok=false; fi

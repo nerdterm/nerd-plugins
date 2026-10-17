@@ -54,17 +54,24 @@ Every pull request is checked by CI, and a failed check stops it:
 
 The checks run with no token and no secrets, from this repository's own scripts, never the pull request's. Each run
 waits for the maintainer's approval in the `catalog-review` environment before it starts, because it runs the plugin on
-the catalog's review machine. A separate job, which runs nothing of the pull request, sets the labels, and only for the
+a GitHub-hosted macOS runner. A separate job, which runs nothing of the pull request, sets the labels, and only for the
 commit that was reviewed.
 
 ## The review machine
 
-The review job runs on a self-hosted macOS runner labelled `catalog-review`, registered `--ephemeral` under a user
-of its own with nothing in its home folder. It needs `nerd` (the latest release), `git`, `jq`, `gitleaks`,
-`osv-scanner`, `guarddog`, `yara` with rules at `/opt/catalog-review/yara/rules.yar`; the repository needs the
-`catalog-review` environment with the maintainer as required reviewer, and the labels `auto-approve` and `needs-maintainer`.
-Tool versions are not pinned by the workflow: update them on the machine deliberately, and read
-their changelogs for changes to flags or exit codes, which the review relies on to fail closed.
+The review job runs on GitHub's macOS runner (`macos-15`, Apple Silicon), a fresh machine for every run that is
+thrown away after it. The job installs its tools itself and stops when a download's checksum differs:
+
+- `nerd`: the latest release, checked against the `.sha256` published with it;
+- Gitleaks 8.30.1, OSV-Scanner 2.6.0, jq 1.8.2 and YARA-X 1.21.0 (`yr`; YARA publishes no macOS build), the release
+  binaries, each checked against a SHA-256 written in `.github/workflows/review.yml`;
+- the YARA Forge core rules, release 20260927, checked the same way;
+- GuardDog 3.2.0 on Python 3.13, with every package it needs pinned by hash in `scripts/guarddog-requirements.txt`.
+
+`git` and `file` are the runner's. The repository needs the `catalog-review` environment with the maintainer as
+required reviewer, and the labels `auto-approve` and `needs-maintainer`. To update a tool, change its version and
+checksum in the workflow together, and read its changelog for changes to flags or exit codes, which the review relies
+on to fail closed.
 
 Risk levels come from the manifest: 0 only shows things, 1 writes files, 2 reaches the network (this Mac's
 services with `"network": "localhost"`, or the hosts and ports the manifest names, which the site and nerd list in
@@ -127,9 +134,9 @@ over 4 MB, is not shown, and the page says why.
 
 `.github/workflows/pages.yml` publishes nerdterm.dev on GitHub Pages on every push to `main`, daily at 04:47 UTC after
 the `stars` workflow has counted (its own push starts no workflow), and when the maintainer runs it by hand. It
-builds on the `catalog-review` runner, because the build needs nerd, from nerd's latest release tag rather than its
-`master`, so the pages about nerd say what the released nerd does; it stops when the runner's installed nerd is not
-that release. Install each nerd release on the runner (and register the runner again, since it is `--ephemeral`), then
-run the workflow by hand to publish. Besides the review's tools the runner needs `node` and `gtar` (GNU tar, which
-`actions/upload-pages-artifact` uses on macOS). The deploy job runs on a GitHub-hosted Linux runner with only
+builds on GitHub's macOS runner (`macos-15`), because the build needs nerd, from nerd's latest release tag rather than
+its `master`, so the pages about nerd say what the released nerd does. The job installs that release itself, checked
+against the `.sha256` published with it, and stops when the installed nerd is not that release; a new nerd release
+reaches the site with the next run. `git`, `node` and `gtar` (GNU tar, which `actions/upload-pages-artifact` uses on
+macOS) are the runner's. The deploy job runs on a GitHub-hosted Linux runner with only
 `pages: write` and `id-token: write`; the repository's Pages source is GitHub Actions.

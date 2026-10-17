@@ -6,7 +6,7 @@ set -euo pipefail
 base=$1
 out=$2
 mkdir -p "$out"
-for tool in nerd git file gitleaks osv-scanner guarddog yara jq; do
+for tool in nerd git file gitleaks osv-scanner guarddog yr jq; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
 done
 
@@ -149,7 +149,7 @@ if [ -f "$dir/pyproject.toml" ] || [ -f "$dir/setup.py" ]; then
 fi
 gitleaks detect --no-git --source "$dir" --report-path "$work/gitleaks.json" > /dev/null 2>&1 || fail "Gitleaks found a secret"
 # A missing or broken rules file is a failure, not a pass.
-if matches=$(yara --recursive --no-warnings "${YARA_RULES:?set YARA_RULES to the rules file}" "$dir"); then
+if matches=$(yr scan --recursive --disable-warnings "${YARA_RULES:?set YARA_RULES to the rules file}" "$dir"); then
   [ -z "$matches" ] || fail "a YARA rule matched"
 else
   fail "yara did not run"

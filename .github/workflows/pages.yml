@@ -2,8 +2,9 @@ name: pages
 
 # Builds nerdterm.dev from main and nerd's latest release, and publishes it on GitHub Pages. A push to main, the day's
 # run after stars.yml counts the stars (its push, made with GITHUB_TOKEN, starts no workflow) and the maintainer's button
-# run it; no pull request builds or deploys anything. The build needs nerd, which is macOS only, so it runs on the
-# catalog-review runner; it clones each plugin's repository as data and runs none of it.
+# run it; no pull request builds or deploys anything. The build needs nerd, which is macOS only, so it runs on a
+# GitHub-hosted macOS runner and installs nerd's latest release itself; it clones each plugin's repository as data and
+# runs none of it.
 on:
   push:
     branches: [main]
@@ -19,26 +20,34 @@ concurrency:
 
 jobs:
   build:
-    runs-on: [self-hosted, macOS, catalog-review]
+    runs-on: macos-15
     timeout-minutes: 30
     permissions:
       contents: read
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Every date on the site comes from this repository's history.
           fetch-depth: 0
           persist-credentials: false
-      - name: nerd's latest release, installed and checked out
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: nerd's latest release, checked against the .sha256 published with it, installed and checked out
         run: |
-          tag=$(gh api repos/nerdterm/nerd/releases/latest --jq .tag_name)
-          case "$(nerd --version)" in
+          mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/dl" && cd "$RUNNER_TEMP/dl"
+          tag=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/nerdterm/nerd/releases/latest)
+          tag=${tag##*/}
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no latest release of nerd: $tag" >&2; exit 1; }
+          a=nerd-$tag-macos-arm64.tar.gz
+          curl -fsSL --retry 3 -O "https://github.com/nerdterm/nerd/releases/download/$tag/$a" -O "https://github.com/nerdterm/nerd/releases/download/$tag/$a.sha256"
+          shasum -a 256 -c "$a.sha256"
+          tar -xzf "$a" nerd && install -m 755 nerd "$RUNNER_TEMP/bin/nerd"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          case "$("$RUNNER_TEMP/bin/nerd" --version)" in
             "nerd ${tag#v} "*) ;;
-            *) echo "this runner has $(nerd --version), not nerd $tag: install the current release first" >&2; exit 1 ;;
+            *) echo "the installed nerd is not $tag" >&2; exit 1 ;;
           esac
-          rm -rf "$RUNNER_TEMP/nerd" "$RUNNER_TEMP/site"
           git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$tag" https://github.com/nerdterm/nerd "$RUNNER_TEMP/nerd"
       - name: build the site
         run: node site/build.mjs "$RUNNER_TEMP/site" --nerd-repo "$RUNNER_TEMP/nerd" --nerd "$(command -v nerd)"
