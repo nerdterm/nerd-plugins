@@ -719,6 +719,8 @@ export function build(out, dataDir, root = repo, opts = {}) {
   for (const f of OWN_FILES) fs.copyFileSync(path.join(here, 'app', f), path.join(out, f));
   fs.cpSync(path.join(here, 'vendor'), path.join(out, 'vendor'), { recursive: true });
   fs.cpSync(path.join(here, 'brand'), path.join(out, 'brand'), { recursive: true });
+  // the short install command serves nerd's own installer, from the release the pages describe
+  fs.copyFileSync(path.join(opts.nerdRepo, 'install.sh'), path.join(out, 'install.sh'));
   return data.plugins;
 }
 
