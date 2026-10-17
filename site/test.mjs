@@ -921,3 +921,51 @@ test('the page asks for each of its files by a fingerprint of its content', () =
   assert.match(fs.readFileSync(path.join(out, 'app.js'), 'utf8'), /casts\/\$\{encodeURIComponent\(p\.name\)\}\.cast\?v=\$\{encodeURIComponent\(p\.cast\.v\)\}/);
   assert.ok(fs.readFileSync(path.join(out, 'app.js'), 'utf8').includes('href="catalog.json"'), 'the About page links the data');
 });
+
+/** Runs scripts/review.sh on a plugin made of `files`, with nerd and the scanners stubbed; `stubs` replaces tools. */
+function review(files, stubs = {}) {
+  const plugin = catalogRepo([['2026-10-01', { LICENSE: 'MIT License', 'plugin.json': '{}', ...files }]]);
+  const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  execFileSync(realGit, ['-C', plugin, 'tag', 'v1.0.0']);
+  const commit = execFileSync(realGit, ['-C', plugin, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const repo = catalogRepo([['2026-10-01', { 'revoked.json': '[]' }], ['2026-10-02', { 'plugins/x.json': entry({ commit }) }]]);
+  const base = execFileSync(realGit, ['-C', repo, 'rev-parse', 'HEAD~1'], { encoding: 'utf8' }).trim();
+  const bin = tmp('bin');
+  const tools = {
+    git: `case " $* " in *" clone "*) for a; do d=$a; done; exec "${realGit}" clone --quiet --no-checkout "${plugin}" "$d";; esac; exec "${realGit}" "$@"`,
+    nerd: `[ "$1" = --plugin-check ] && echo '{"name":"x","version":"1.0.0","risk":0,"problems":[]}'; exit 0`,
+    gitleaks: 'exit 0', 'osv-scanner': 'exit 0', guarddog: 'exit 0', yr: 'exit 0', ...stubs,
+  };
+  for (const [name, body] of Object.entries(tools)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  const out = tmp('out');
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'review.sh');
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, YARA_RULES: '/dev/null' };
+  let ok = true;
+  try { execFileSync(script, [base, out], { cwd: repo, env, stdio: 'ignore' }); } catch { ok = false; }
+  return { ok, problems: JSON.parse(fs.readFileSync(path.join(out, 'result.json'), 'utf8')).problems };
+}
+
+test('the review catches a long encoded blob and fails when a check cannot run', () => {
+  const b64 = (n) => Buffer.from('x'.repeat(n)).toString('base64').slice(0, n);
+  assert.deepEqual(review({ 'a.sh': 'echo hi\n' }), { ok: true, problems: [] });
+  assert.deepEqual(review({ 'a.sh': `x=${b64(600)}\n` }).problems, ['a.sh holds a long encoded blob'], 'one line of base64');
+  assert.deepEqual(review({ 'a.sh': `x=${'0123456789abcdef'.repeat(30)}\n` }).problems, ['a.sh holds a long encoded blob'], 'hex');
+  assert.deepEqual(review({ 'a.sh': `x="\n${`${b64(76)}\n`.repeat(8)}"\n` }).problems, ['a.sh holds a long encoded blob'], 'wrapped');
+  assert.deepEqual(review({ 'a.sh': `x=${b64(390)}\n` }).problems, []);
+  assert.deepEqual(review({ 'a.js': `${'f(1);'.repeat(201)}\n` }).problems, ['a.js has a line over 1000 characters: minified or obfuscated code is not accepted']);
+  const grep = review({ 'a.sh': 'echo hi\n' }, { grep: 'case "$1" in -r*) exit 2;; esac; exec /usr/bin/grep "$@"' });
+  assert.equal(grep.ok, false);
+  assert.match(grep.problems.join('\n'), /a check did not run \(exit 2\): grep/);
+  const awk = review({ 'a.sh': 'echo hi\n' }, { awk: 'case " $* " in *lines.awk*) exit 2;; esac; exec /usr/bin/awk "$@"' });
+  assert.equal(awk.ok, false);
+  assert.deepEqual(awk.problems.sort(), ['LICENSE', 'a.sh', 'plugin.json'].map((f) => `the line checks did not run on ${f}`));
+});
+
+test('the review reads a recording as a recording: long event lines pass, encoded blobs in it do not', () => {
+  const peek = fs.readFileSync(path.join(fixtures, 'review', 'peek.cast'), 'utf8');
+  assert.ok(peek.split('\n').some((l) => l.length > 1000), 'the fixture has the long lines that were refused');
+  assert.deepEqual(review({ 'demo.cast': peek }), { ok: true, problems: [] });
+  assert.deepEqual(review({ 'docs/demo.cast': peek }).problems, ['docs/demo.cast has a line over 1000 characters: minified or obfuscated code is not accepted'], 'only the recording the site shows');
+  const blob = `${peek.split('\n')[0]}\n[0.1,"o","${Buffer.from('x'.repeat(600)).toString('base64')}"]\n`;
+  assert.deepEqual(review({ 'demo.cast': blob }).problems, ['demo.cast holds a long encoded blob']);
+});

@@ -5,13 +5,15 @@ set -euo pipefail
 
 base=$1
 out=$2
+scripts=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$out"
 for tool in nerd git file gitleaks osv-scanner guarddog yr jq; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
 done
 
 changed=$(git diff --name-only "$base"...HEAD -- 'plugins/*.json')
-others=$(git diff --name-only "$base"...HEAD | grep -v '^plugins/[a-z0-9-]*\.json$' || true)
+# grep and awk exit 1 for "nothing found"; 2 or more is a check that did not run, and fails the review.
+others=$(git diff --name-only "$base"...HEAD | grep -v '^plugins/[a-z0-9-]*\.json$') || [ $? = 1 ]
 [ -z "$others" ] || { echo "a plugin pull request changes plugins/<name>.json only: $others" >&2; exit 1; }
 [ "$(echo "$changed" | grep -c .)" = 1 ] || { echo "one plugin per pull request" >&2; exit 1; }
 
@@ -32,6 +34,7 @@ featured_changed=false
 [ "$featured" = "$previous_featured" ] || featured_changed=true
 problems=()
 fail() { problems+=("$1"); }
+found() { local rc=0; "$@" || rc=$?; [ "$rc" -le 1 ] || fail "a check did not run (exit $rc): $1"; return "$rc"; }
 
 # A public GitHub repository, as nerd accepts it; the site also shows it as a command to paste into a shell.
 repo=${url%.git}
@@ -110,15 +113,13 @@ while IFS= read -r -d '' f; do
   case "$(basename "$rel")" in
     package-lock.json|bun.lock|pnpm-lock.yaml|yarn.lock|Cargo.lock|go.sum|uv.lock|poetry.lock|pdm.lock) continue ;;
   esac
-  if [[ "$mime" == text/* || "$mime" == application/json ]] && awk 'length > 1000 { found = 1 } END { exit !found }' "$f"; then
-    fail "$rel has a line over 1000 characters: minified or obfuscated code is not accepted"
-  fi
-  # A long run of base64 or hex, on one line or wrapped over many, is data that could hide code. A heuristic: it
-  # catches the usual encoders' output, not every way to hide something.
   if [[ "$mime" == text/* || "$mime" == application/json ]]; then
-    if grep -qE '[A-Za-z0-9+/=]{400,}|[0-9a-fA-F]{400,}' "$f" \
-      || awk '/^[[:space:]"'"'"'`+(]*[A-Za-z0-9+\/=]{60,}["'"'"'`,;)+[:space:]]*$/ { run++; if (run >= 8) found = 1; next } { run = 0 } END { exit !found }' "$f"; then
-      fail "$rel holds a long encoded blob"
+    recording=0
+    [ "$f" != "$dir/demo.cast" ] || recording=1
+    if hits=$(LC_ALL=C awk -v recording="$recording" -f "$scripts/lines.awk" "$f"); then
+      while IFS= read -r h; do [ -z "$h" ] || fail "$rel $h"; done <<< "$hits"
+    else
+      fail "the line checks did not run on $rel"
     fi
   fi
 done < <(find "$dir" -type f -print0)
@@ -128,13 +129,13 @@ pinned() { [ -f "$dir/$1" ] || fail "$2 has no $1 to pin its dependencies"; }
 [ ! -f "$dir/Cargo.toml" ] || pinned Cargo.lock Cargo.toml
 [ ! -f "$dir/go.mod" ] || pinned go.sum go.mod
 [ ! -f "$dir/pyproject.toml" ] || [ -f "$dir/uv.lock" ] || [ -f "$dir/poetry.lock" ] || [ -f "$dir/pdm.lock" ] || fail "pyproject.toml has no lockfile"
-if [ -f "$dir/requirements.txt" ] && grep -vE '^\s*(#|$|-r )' "$dir/requirements.txt" | grep -qvE '=='; then
+if [ -f "$dir/requirements.txt" ] && found awk '!/^[[:space:]]*(#|$|-r )/ && !/==/ { f = 1 } END { exit !f }' "$dir/requirements.txt"; then
   fail "requirements.txt pins every package with =="
 fi
 
 # The scanners read their settings from the folder they scan: the plugin's own would switch them off.
 find "$dir" \( -name osv-scanner.toml -o -name .gitleaks.toml -o -name .gitleaksignore -o -name .semgrepignore -o -name .guarddog.yml \) -exec rm -f {} +
-if grep -rIl --exclude-dir=.git -e 'nosemgrep' -e 'gitleaks:allow' -e 'osv-scanner:ignore' "$dir" > "$work/silencers.txt" 2>/dev/null; then
+if found grep -rIl --exclude-dir=.git -e 'nosemgrep' -e 'gitleaks:allow' -e 'osv-scanner:ignore' "$dir" > "$work/silencers.txt" 2>/dev/null; then
   fail "the code tells a scanner to look away: $(tr '\n' ' ' < "$work/silencers.txt")"
 fi
 # OSV's database includes the OpenSSF malicious-packages entries (MAL-); exit 128 means it found no package at all.

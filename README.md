@@ -46,7 +46,8 @@ Every pull request is checked by CI, and a failed check stops it:
 - every package manifest has a lockfile that pins exact versions;
 - a `demo.cast`, which the site shows, is a plain file whose first line is one asciicast v2 or v3 header with a
   whole-number width and height from 1 to 1000, and whose other lines are events `[time, code, data]` with a time of
-  0 or more, in order;
+  0 or more, in order; its long event lines are not taken for minified code, and every other check reads it as it
+  reads any file;
 - OSV-Scanner (known vulnerabilities and OpenSSF malicious packages), GuardDog, YARA and Gitleaks;
 - `nerd --plugin-trial`: the plugin runs in nerd's sandbox with no network (even when its manifest names hosts) and nowhere to write but a temporary data folder. It reports whether
   it connected, what it sent, how it ended and what it printed; macOS does not let the review read the sandbox's
