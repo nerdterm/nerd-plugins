@@ -10,7 +10,7 @@
   const DATA = JSON.parse($('#data').textContent);
   const CATALOG_REPO = 'https://github.com/nerdterm/nerd-plugins';
   const NERD_REPO = 'https://github.com/nerdterm/nerd';
-  const INSTALL = 'curl -fsSL https://raw.githubusercontent.com/nerdterm/nerd/master/install.sh | sh';
+  const INSTALL = 'curl -fsSL https://nerdterm.dev/install.sh | sh';
   const THEME_KEY = 'nerd-plugins-theme';
   const RECENT_KEY = 'nerd-plugins-recent';
 

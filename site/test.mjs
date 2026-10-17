@@ -441,7 +441,7 @@ test('the build has no example plugin, no variation switch and no inline style, 
   assert.ok(!own.find(([f]) => f === 'index.html')[1].includes('id="sw"'), 'no switcher');
   assert.ok(!JSON.parse(read(out, 'catalog.json')).plugins.some((p) => /example/i.test(p.name)), 'no example plugin');
   assert.ok(!/ style="/.test(read(out, 'app.js') + read(out, 'index.html')), 'the policy allows no style attribute');
-  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml']) assert.ok(fs.existsSync(path.join(out, f)), f);
+  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml', 'install.sh']) assert.ok(fs.existsSync(path.join(out, f)), f);
   const app = read(out, 'app.js');
   assert.match(app, /const THEME_KEY = 'nerd-plugins-theme';/);
   assert.match(app, /const RECENT_KEY = 'nerd-plugins-recent';/);
