@@ -63,16 +63,16 @@ The review job runs on a self-hosted macOS runner labelled `catalog-review`, reg
 of its own with nothing in its home folder. It needs `nerd` (the latest release), `git`, `jq`, `gitleaks`,
 `osv-scanner`, `guarddog`, `yara` with rules at `/opt/catalog-review/yara/rules.yar`; the repository needs the
 `catalog-review` environment with the maintainer as required reviewer, and the labels `auto-approve` and `needs-maintainer`.
-`/deep-review` needs the `ANTHROPIC_API_KEY` secret: use a key of its own with a spending limit, since the plugin it
-reads is a stranger's. Tool versions are not pinned by the workflow: update them on the machine deliberately, and read
+Tool versions are not pinned by the workflow: update them on the machine deliberately, and read
 their changelogs for changes to flags or exit codes, which the review relies on to fail closed.
 
 Risk levels come from the manifest: 0 only shows things, 1 writes files, 2 reaches the network (this Mac's
 services with `"network": "localhost"`, or the hosts and ports the manifest names, which the site and nerd list in
 words), 3 hooks into an agent. A pull request at level 0 whose checks pass, and whose level did not rise, is labelled `auto-approve` and gets
 the mark **checked**. Every other one is labelled `needs-maintainer`: the maintainer reads it and, on approval, it gets the
-mark **reviewed**. The maintainer may comment `/deep-review` to add an AI analysis; it only adds findings and cannot
-approve anything.
+mark **reviewed**. The maintainer may add an AI analysis on their own machine with `scripts/deep-review.sh <pull request>`: it
+reads the plugin at the pinned commit as data, with read-only tools, a fixed model, a turn limit and a spending cap,
+and prints a report. It only adds findings and cannot approve anything; the maintainer decides what to post.
 
 ## Stars
 
