@@ -423,7 +423,7 @@
     const flow = frame('the pipeline',
       `<div class="prose">
       ${step(1, 'An author opens a pull request', '<p>It adds or changes one file, <code>plugins/&lt;name&gt;.json</code>, that names a release tag and the commit it points at. nerd installs exactly that commit and refuses when the tag no longer points at it.</p>')}
-      ${step(2, 'The checks run', `<p>They run on the catalog’s own machine, from the catalog’s own scripts, with no token and no secrets, never from the plugin’s. A failed check stops the pull request.</p>
+      ${step(2, 'The checks run', `<p>They run on a fresh GitHub-hosted Mac, from the catalog’s own scripts, with no token and no secrets, never from the plugin’s. A failed check stops the pull request.</p>
         <ul class="plain"><li>The manifest is valid and the risk level is computed from it.</li><li>The licence is an open source one.</li><li>No compiled binaries, no file over 1 MB that is not text, no minified line, no long encoded blob. This is a heuristic, not a proof.</li><li>Every package manifest has a lockfile that pins exact versions.</li><li>OSV-Scanner for known vulnerabilities and malicious packages; GuardDog, YARA and Gitleaks over the files.</li></ul>`)}
       ${step(3, 'The trial in the sandbox', '<p>The plugin runs in nerd’s sandbox with no network, even when its manifest names hosts, and nowhere to write but a temporary data folder. The report says whether it connected, what it registered, how it ended and what it printed. macOS does not let the review read the sandbox’s own list of what it denied, so that list is not in the report.</p>')}
       ${step(4, 'The decision', '<p>The risk level decides who looks next.</p>')}
