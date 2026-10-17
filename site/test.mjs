@@ -10,7 +10,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 
-import { build, CAST_MAX, catalog, CSP, egressMissing, fingerprint, gain, nerdDocs, pluginReads, kinds, lastCommitOf, manifestDiff, markdown, permChange, prOf, README_MAX, readSource, safeUrl, widened } from './build.mjs';
+import { build, CAST_MAX, catalog, CSP, egressMissing, fingerprint, gain, isOfficial, nerdDocs, pluginReads, kinds, lastCommitOf, manifestDiff, markdown, permChange, prOf, README_MAX, readSource, safeUrl, widened } from './build.mjs';
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 // a small nerd repository: the pages about nerd are built from its README, CHANGELOG, plugin guide and SECURITY.md
@@ -47,7 +47,7 @@ const data = (over) => ({ abilities: ['Runs /bin/sh'], platforms: [], min_nerd: 
 /** alpha: two releases, the second reaching the network and featured; beta: warned about; gamma: revoked. */
 function fixtureCatalog() {
   const root = catalogRepo([
-    ['2026-06-01', { 'stars.json': { changed: '2026-06-01', stars: { alpha: 10 } }, 'revoked.json': '[]' }],
+    ['2026-06-01', { 'stars.json': { changed: '2026-06-01', stars: { alpha: 10 } }, 'revoked.json': '[]', 'official.json': '["alpha"]' }],
     ['2026-07-01', { 'plugins/alpha.json': entry({ url: 'https://github.com/nerdterm/alpha' }) }],
     // The same release marked again later: it keeps the mark it entered the catalog with.
     ['2026-07-05', { 'plugins/alpha.json': entry({ url: 'https://github.com/nerdterm/alpha', review: 'reviewed' }) }],
@@ -62,7 +62,7 @@ function fixtureCatalog() {
   fs.mkdirSync(dir);
   const v10 = { name: 'alpha', version: '1.0.0', min_nerd: '0.8.0', previews: [{ extensions: ['db'] }] };
   const v11 = { ...v10, version: '1.1.0', permissions: { network: { hosts: ['api.example.com'], ports: [443] } }, commands: [{ id: 'r' }] };
-  fs.writeFileSync(path.join(dir, 'alpha.json'), JSON.stringify(data({ abilities: ['Runs /bin/sh', 'Learns which .db files you select, and reads them'], min_nerd: '0.8.0', manifest: v11, manifests: { [A]: v10, [B]: v11 } })));
+  fs.writeFileSync(path.join(dir, 'alpha.json'), JSON.stringify(data({ abilities: ['Runs /bin/sh', 'Learns which .db files you select, and reads them'], min_nerd: '0.8.0', manifest: v11, manifests: { [A]: v10, [B]: v11 }, tagCommit: B })));
   fs.writeFileSync(path.join(dir, 'beta.json'), JSON.stringify(data({ manifest: { name: 'beta', permissions: { write: ['~/.cache/beta'] } } })));
   fs.writeFileSync(path.join(dir, 'gamma.json'), JSON.stringify(data({ min_nerd: '0.9.0', manifest: { name: 'gamma' } })));
   return { root, dir };
@@ -105,6 +105,30 @@ test('dates, releases, marks, featured and revocations come from the catalog his
   assert.equal(alpha.revoked, null);
   assert.deepEqual(d.nerdVersions, ['0.10.0', '0.9.0', '0.8.0']);
   assert.equal(d.starsChanged, '2026-10-05');
+});
+
+test("official is nerdterm's own repository whose tag is the entry's commit, never the entry's word", () => {
+  const e = (url) => ({ url, commit: B });
+  assert.ok(isOfficial(e('https://github.com/nerdterm/alpha'), B));
+  assert.ok(isOfficial(e('https://github.com/NerdTerm/alpha'), B), 'the owner compared case-insensitively');
+  assert.ok(!isOfficial(e('https://github.com/nerdterm/alpha'), A), 'the tag resolves elsewhere');
+  assert.ok(!isOfficial(e('https://github.com/nerdterm/alpha'), null), 'the tag check could not run');
+  for (const url of ['https://github.com/nerdterm-x/alpha', 'https://github.com/nerdterm.evil/alpha', 'https://github.com/nerdterm/x/extra', 'https://github.com/someone/nerdterm', 'https://github.com/nerdterm/alpha.git', 'https://github.com/nerdterm/alpha/', 'https://github.com/nerdterm/..', 'http://github.com/nerdterm/alpha', 'https://github.com.evil/nerdterm/alpha', 'https://github.com/nerdterm/alpha#x']) {
+    assert.ok(!isOfficial(e(url), B), url);
+  }
+  const { root, dir } = fixtureCatalog();
+  const claims = catalogRepo([['2026-10-01', { 'plugins/beta.json': entry({ url: 'https://github.com/someone/beta', commit: C, official: true }), 'plugins/moved.json': entry({ url: 'https://github.com/nerdterm/moved', commit: C, official: true }) }]]);
+  fs.writeFileSync(path.join(dir, 'moved.json'), JSON.stringify(data({ manifest: { name: 'moved' }, tagCommit: D })));
+  const [beta, moved] = catalog(claims, dir, { nerdRepo, today: '2026-10-05', nerd: null }).data.plugins;
+  assert.deepEqual([beta.official, moved.official], [false, false], 'the entry\'s own "official" has no effect');
+  const page = catalog(root, dir, { nerdRepo, today: '2026-10-05', nerd: null }).data.plugins;
+  assert.deepEqual(page.map((p) => [p.name, p.official]), [['alpha', true], ['beta', false], ['gamma', false]]);
+  // Only the maintainer's official.json grants it (the claims catalog above has none at all).
+  const list = (v) => { fs.writeFileSync(path.join(root, 'official.json'), v); return catalog(root, dir, { nerdRepo, today: '2026-10-05', nerd: null }).data.plugins.map((p) => [p.name, p.official]); };
+  assert.deepEqual(list('[]'), [['alpha', false], ['beta', false], ['gamma', false]], 'not on the list');
+  assert.deepEqual(list('{"alpha": true}'), [['alpha', false], ['beta', false], ['gamma', false]], 'not a list');
+  assert.deepEqual(list('not json'), [['alpha', false], ['beta', false], ['gamma', false]], 'unreadable');
+  assert.deepEqual(list('["alpha", "beta"]'), [['alpha', true], ['beta', false], ['gamma', false]], 'beta is listed but lives under another owner');
 });
 
 test('stars gained are the count now less the count on the day, or since the oldest count', () => {
@@ -591,6 +615,7 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
       rec: !!D.querySelector('.frame.rec'), player: !!D.querySelector('.rec [id^=pl]'), ctl: txt(D.querySelector('.rec .ctl')),
       rooms: all(D, '.rband .rcell').map((c) => [c.className, txt(c)]), readme: txt(D.querySelector('.readme')),
       tabs: all(D, '.ptabs a').map(txt), install: txt(D.querySelector('.info .cmd code')),
+      mark: all(D, '.off').map((n) => n.getAttribute('data-tip')), official: all(D, '.sect').map(txt).filter((t) => t.startsWith('Official')), check: all(D, '.info .cmd code').map(txt)[1],
     };
     const pause = D.querySelector('.rec [data-act=toggle]');
     pause.click(); await sleep(500);
@@ -820,6 +845,8 @@ ui('a plugin page shows the recording, the four rooms, the README and the Relate
   assert.deepEqual(r.plugin.tabs, ['Overview', 'Review', 'Releases', 'Related 1']);
   assert.equal(r.plugin.install, 'nerd --plugin-add https://github.com/nerdterm/alpha');
   assert.deepEqual(r.plugin.related, ['gamma']);
+  assert.deepEqual([r.plugin.mark, r.plugin.official], [['Official: published by the nerd project'], ['Official: published by the nerd project']]);
+  assert.equal(r.plugin.check, `git ls-remote https://github.com/nerdterm/alpha refs/tags/v1.1.0`, 'the command that shows the tag is the commit');
   assert.deepEqual(r.plugin.clipped, { 320: [], 1024: [], 1280: [] }, 'no room heading is cut off');
   assert.deepEqual(r.plugin.toggle, ['Play', 'Pause'], 'the page\'s own button pauses and plays the recording');
   assert.ok(r.plugin.gap <= 2, `the player is as high as its terminal (${r.plugin.gap}px more)`);
@@ -923,12 +950,12 @@ test('the page asks for each of its files by a fingerprint of its content', () =
 });
 
 /** Runs scripts/review.sh on a plugin made of `files`, with nerd and the scanners stubbed; `stubs` replaces tools. */
-function review(files, stubs = {}) {
+function review(files, stubs = {}, over = {}) {
   const plugin = catalogRepo([['2026-10-01', { LICENSE: 'MIT License', 'plugin.json': '{}', ...files }]]);
   const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
   execFileSync(realGit, ['-C', plugin, 'tag', 'v1.0.0']);
   const commit = execFileSync(realGit, ['-C', plugin, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const repo = catalogRepo([['2026-10-01', { 'revoked.json': '[]' }], ['2026-10-02', { 'plugins/x.json': entry({ commit }) }]]);
+  const repo = catalogRepo([['2026-10-01', { 'revoked.json': '[]' }], ['2026-10-02', { 'plugins/x.json': entry({ commit, ...over }) }]]);
   const base = execFileSync(realGit, ['-C', repo, 'rev-parse', 'HEAD~1'], { encoding: 'utf8' }).trim();
   const bin = tmp('bin');
   const tools = {
@@ -941,8 +968,11 @@ function review(files, stubs = {}) {
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'review.sh');
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, YARA_RULES: '/dev/null' };
   let ok = true;
-  try { execFileSync(script, [base, out], { cwd: repo, env, stdio: 'ignore' }); } catch { ok = false; }
-  return { ok, problems: JSON.parse(fs.readFileSync(path.join(out, 'result.json'), 'utf8')).problems };
+  let stderr = '';
+  try { execFileSync(script, [base, out], { cwd: repo, env, stdio: ['ignore', 'ignore', 'pipe'] }); } catch (err) { ok = false; stderr = String(err.stderr); }
+  // an entry refused before the plugin is fetched leaves no result.json, only its reason
+  const result = path.join(out, 'result.json');
+  return { ok, problems: fs.existsSync(result) ? JSON.parse(fs.readFileSync(result, 'utf8')).problems : [stderr.trim()] };
 }
 
 test('the review catches a long encoded blob and fails when a check cannot run', () => {
@@ -959,6 +989,13 @@ test('the review catches a long encoded blob and fails when a check cannot run',
   const awk = review({ 'a.sh': 'echo hi\n' }, { awk: 'case " $* " in *lines.awk*) exit 2;; esac; exec /usr/bin/awk "$@"' });
   assert.equal(awk.ok, false);
   assert.deepEqual(awk.problems.sort(), ['LICENSE', 'a.sh', 'plugin.json'].map((f) => `the line checks did not run on ${f}`));
+});
+
+test('the review refuses an entry that says it is official', () => {
+  const refused = { ok: false, problems: ['official is derived by the site, never set in an entry'] };
+  assert.deepEqual(review({}, {}, { official: true }), refused);
+  assert.deepEqual(review({}, {}, { official: false }), refused);
+  assert.deepEqual(review({}), { ok: true, problems: [] });
 });
 
 test('the review reads a recording as a recording: long event lines pass, encoded blobs in it do not', () => {

@@ -41,6 +41,8 @@ repo=${url%.git}
 [[ "$url" =~ ^https://github\.com/[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$ ]] && [[ "${repo##*/}" != . && "${repo##*/}" != .. && -n "${repo##*/}" ]] ||
   { echo "the url must be https://github.com/<owner>/<repo>" >&2; exit 1; }
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "commit must be 40 hex characters" >&2; exit 1; }
+# The site derives "official" from the url and the tag; an entry that claims it is refused.
+jq -e 'has("official") | not' "$entry" >/dev/null || { echo "official is derived by the site, never set in an entry" >&2; exit 1; }
 # Only the keys the catalog knows: anything else is a field some reader might trust.
 extra=$(jq -r '(keys - ["title","summary","url","tag","commit","version","risk","review","featured"]) | join(", ")' "$entry")
 [ -z "$extra" ] || { echo "unknown keys in the entry: $extra" >&2; exit 1; }

@@ -254,7 +254,7 @@
   function cardHtml(p, right, rank) {
     const id = p.cast ? 'pl' + ++S.uid : '';
     if (id) pending.push(() => mount(id, p, true));
-    return `<a class="frame card" href="#/plugin/${esc(p.name)}"><h3 class="t">${rank ? `<span class="rank">${rank}</span>` : ''}${esc(p.name)}</h3><span class="t r">${right}</span><div class="body">${id ? `<div class="still-box"><div id="${id}" class="still"></div></div>` : sketchHtml(p)}<span>${esc(p.summary)}</span><span class="meta">${roomIcons(p)}<span class="faint">${esc(p.author)}</span></span></div></a>`;
+    return `<a class="frame card" href="#/plugin/${esc(p.name)}"><h3 class="t">${rank ? `<span class="rank">${rank}</span>` : ''}${esc(p.name)}</h3><span class="t r">${right}</span><div class="body">${id ? `<div class="still-box"><div id="${id}" class="still"></div></div>` : sketchHtml(p)}<span>${esc(p.summary)}</span><span class="meta">${roomIcons(p)}<span class="faint">${esc(p.author)}</span>${p.official ? '<span class="off" role="img" aria-label="nerd official" data-tip="Official: published by the nerd project"><b>nerd</b>official</span>' : ''}</span></div></a>`;
   }
 
   function catalogView(rt) {
@@ -358,8 +358,15 @@
         p.unavailable ? '<p class="notice warn"><b>Source unavailable at build time.</b> The catalog could not read this release from its repository when this page was built, so what it may do in detail, its README and its recording are not shown. Its risk level and review mark are the catalog’s.</p>' : '',
       ].join('');
       body = `${notices}<p class="sum">${esc(p.summary)}</p>
-        <div class="row"><span>by <a href="#/author/${encodeURIComponent(p.author)}">${esc(p.author)}</a>${p.official ? ' <span class="faint">official</span>' : ''}</span><a class="mk" href="#/plugin/${esc(p.name)}/review">${markIcon(p.review)}</a>${roomIcons(p)}</div>
+        <div class="row"><span>by <a href="#/author/${encodeURIComponent(p.author)}">${esc(p.author)}</a>${p.official ? ' <span class="off" role="img" aria-label="nerd official" data-tip="Official: published by the nerd project"><b>nerd</b>official</span>' : ''}</span><a class="mk" href="#/plugin/${esc(p.name)}/review">${markIcon(p.review)}</a>${roomIcons(p)}</div>
         <h3 class="sect">Install</h3>${cmdBox(install(p))}${(p.notes || []).map((n) => `<p class="note">${esc(n)}</p>`).join('')}
+        ${p.official ? `<h3 class="sect">Official: published by the nerd project</h3>
+        <dl class="facts">
+          <dt>repository</dt><dd>${esc(p.url)}</dd>
+          <dt>tag</dt><dd>${esc(p.tag)}</dd>
+          <dt>commit</dt><dd>${esc(p.commit)}</dd>
+        </dl>
+        <p class="note">Only the nerd project can tag its own repository. Check it yourself: this prints the commit above, on the line ending in ^{} for an annotated tag.</p>${cmdBox(`git ls-remote ${p.url} refs/tags/${p.tag}`)}` : ''}
         <h3 class="sect">Facts</h3>
         <dl class="facts">
           <dt>release</dt><dd>${esc(p.tag)}, ${fmtShort(latest.date || p.updated)}</dd>
@@ -679,7 +686,7 @@
   const tip = document.createElement('div'); tip.id = 'rtip'; tip.hidden = true; document.body.append(tip);
   document.addEventListener('scroll', () => { tip.hidden = true; }, true);
   document.addEventListener('mouseover', (e) => {
-    const r = e.target.closest?.('.ri.on'); if (!r) { tip.hidden = true; return; }
+    const r = e.target.closest?.('.ri.on, .off'); if (!r) { tip.hidden = true; return; }
     tip.textContent = r.dataset.tip; tip.hidden = false;
     const b = r.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, b.left + b.width / 2 - w / 2)) + 'px';

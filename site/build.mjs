@@ -2,7 +2,7 @@
 // One page (index.html, the catalog embedded as JSON), catalog.json (the same data) and nerd-docs.js (nerd's README.md,
 // docs/*.md except the contributors' rules, CHANGELOG.md and SECURITY.md, so the pages about nerd say what its repository says). Everything shown is derived:
 // dates and versions from this repository's git history, stars from stars.json and its history, what a plugin may do
-// from `nerd --plugin-check` and its plugin.json at the catalog's commit. Only `featured` is set by hand.
+// from `nerd --plugin-check` and its plugin.json at the catalog's commit. Only `featured` and official.json are set by hand.
 // The page loads nothing from anywhere else, sets no cookie and counts nothing.
 
 import { execFileSync } from 'node:child_process';
@@ -330,6 +330,17 @@ export const README_MAX = 256 * 1024;
 export const CAST_MAX = 4 * 1024 * 1024;
 const COMMIT = /^[0-9a-f]{40}$/;
 const GITHUB = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+const TAG = /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/;
+
+/**
+ * Official: the entry's url is the nerdterm organisation's own repository and its tag there is the entry's commit.
+ * `tagCommit` is what the tag resolved to in that repository at build time; a fork's commit can be fetched through
+ * the parent's address, but only nerdterm can create a tag there. Never a field of the entry.
+ */
+export function isOfficial(e, tagCommit) {
+  const repo = /^https:\/\/github\.com\/nerdterm\/([A-Za-z0-9._-]{1,100})$/i.exec(String(e.url))?.[1];
+  return Boolean(repo) && repo !== '.' && repo !== '..' && !/\.git$/i.test(repo) && COMMIT.test(e.commit) && tagCommit === e.commit;
+}
 
 /** What a page may carry of a plugin's own files: a README or recording over its cap is replaced by a sentence saying so. */
 export function capped(d) {
@@ -352,9 +363,15 @@ function fetchData(e, work, versionCommits, nerd) {
   const git = (...a) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'transfer.fsckObjects=true', ...a], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
   git('clone', '--quiet', '--no-checkout', '--', e.url, dir);
   const lastCommit = lastCommitOf((...a) => git('-C', dir, ...a));
+  let tagCommit = null;
+  try {
+    if (TAG.test(e.tag)) tagCommit = git('-C', dir, 'rev-parse', '--verify', '--quiet', `refs/tags/${e.tag}^{commit}`).trim();
+  } catch {
+    // no such tag: not official
+  }
   git('-C', dir, 'checkout', '--quiet', '--detach', e.commit, '--');
   const check = JSON.parse(execFileSync(nerd, ['--plugin-check', '--json', dir], { encoding: 'utf8' }));
-  return { ...readSource(dir, check, versionCommits, (...a) => git('-C', dir, ...a)), lastCommit };
+  return { ...readSource(dir, check, versionCommits, (...a) => git('-C', dir, ...a)), lastCommit, tagCommit };
 }
 
 /** The manifest as nerd reads it: a link is followed, but only to a file inside the plugin's own folder. */
@@ -460,7 +477,16 @@ function nerdVersion(nerd) {
  * decide abilities and the newest nerd (default `nerd` on PATH); `opts.today` (YYYY-MM-DD) and `opts.nerd` stand in
  * for the clock and its version.
  */
+/** official.json: the plugin names the maintainer has made official; unreadable or malformed is none (fail closed). */
+export function officialNames(root) {
+  try {
+    const v = JSON.parse(fs.readFileSync(path.join(root, 'official.json'), 'utf8'));
+    return new Set(Array.isArray(v) ? v.filter((n) => typeof n === 'string' && /^[a-z0-9-]+$/.test(n)) : []);
+  } catch { return new Set(); }
+}
+
 export function catalog(root, dataDir, opts = {}) {
+  const approved = officialNames(root);
   const today = opts.today ?? isoDay(new Date());
   const nerdBin = opts.nerdBin ?? 'nerd';
   const newest = opts.nerd !== undefined ? opts.nerd : nerdVersion(nerdBin);
@@ -514,7 +540,7 @@ export function catalog(root, dataDir, opts = {}) {
         // Only a plain GitHub address is shown, so the install command needs no quoting.
         url: GITHUB.test(e.url) ? e.url : '',
         author: owner,
-        official: owner === 'nerdterm',
+        official: approved.has(e.name) && isOfficial(e, d.tagCommit),
         featured: e.featured === true,
         version: String(e.version ?? ''),
         tag: String(e.tag ?? ''),
