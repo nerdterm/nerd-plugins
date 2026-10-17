@@ -1,7 +1,21 @@
-# nerd plugins
+<div align="center">
 
-The catalog of community plugins for [nerd](https://github.com/nerdterm/nerd), under the [MIT licence](LICENSE). nerd reads it only when you choose
-Refresh catalog (or run `nerd --plugin-catalog`); nothing is fetched in the background.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/brand/nerd-logo-dark.svg">
+  <img src="site/brand/nerd-logo-light.svg" alt="nerd" width="360">
+</picture>
+
+**The catalog of reviewed plugins for nerd.**
+
+[Browse plugins](https://nerdterm.dev/#/plugins) · [Add yours](#adding-or-updating-a-plugin) · [nerdterm.dev](https://nerdterm.dev)
+
+</div>
+
+The catalog is under the [MIT licence](LICENSE). nerd reads it only when you choose Refresh catalog (or run `nerd --plugin-catalog`); nothing is fetched in the background.
+
+- **Add.** One file per plugin, `plugins/<name>.json`, pinned to a tag and its commit.
+- **Review.** Every entry is scanned and run once in nerd's sandbox with no network; anything that writes files, reaches the network or hooks into an agent is read by the maintainer.
+- **Install.** nerd installs exactly the pinned commit, and shows what a plugin can do before it asks.
 
 ## An entry
 
