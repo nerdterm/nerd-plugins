@@ -136,7 +136,9 @@ test('the page carries its policy, loads only its own files and cannot be broken
   assert.ok(html.includes(`content="${CSP}"`));
   assert.ok(!html.includes(evil) && html.includes('\\u003c/script>'), 'a title cannot end the data early');
   // Every file the page loads is its own: no scheme, no protocol-relative path, no @import or url() from elsewhere.
-  for (const [, tag, u] of html.matchAll(/<(script|link|img|iframe|source)\b[^>]*?(?:src|href)="([^"]+)"/g)) {
+  for (const [m, tag, u] of html.matchAll(/<(script|link|img|iframe|source)\b[^>]*?(?:src|href)="([^"]+)"/g)) {
+    // the canonical address names the page to search engines and loads nothing
+    if (/rel="canonical"/.test(m) && u === 'https://nerdterm.dev/') continue;
     assert.ok(!/^[a-z]+:|^\/\//i.test(u), `${tag} loads ${u}`);
     assert.ok(fs.existsSync(path.join(out, u.replace(/\?v=[0-9a-f]+$/, ''))), `${u} is in the build`);
   }
@@ -439,7 +441,7 @@ test('the build has no example plugin, no variation switch and no inline style, 
   assert.ok(!own.find(([f]) => f === 'index.html')[1].includes('id="sw"'), 'no switcher');
   assert.ok(!JSON.parse(read(out, 'catalog.json')).plugins.some((p) => /example/i.test(p.name)), 'no example plugin');
   assert.ok(!/ style="/.test(read(out, 'app.js') + read(out, 'index.html')), 'the policy allows no style attribute');
-  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg']) assert.ok(fs.existsSync(path.join(out, f)), f);
+  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml']) assert.ok(fs.existsSync(path.join(out, f)), f);
   const app = read(out, 'app.js');
   assert.match(app, /const THEME_KEY = 'nerd-plugins-theme';/);
   assert.match(app, /const RECENT_KEY = 'nerd-plugins-recent';/);
