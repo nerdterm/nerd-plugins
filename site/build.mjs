@@ -690,7 +690,7 @@ export function egressMissing(markers, homeJs) {
 export const fingerprint = (content) => createHash('sha256').update(content).digest('hex').slice(0, 10);
 // The page's own files, referenced as `<file>?v=<fingerprint>` so an update is never served from an old cache.
 const ASSETS = ['theme.js', 'style.css', 'site.css', 'pages.css', 'home.css', 'catalog-front.css', 'pages.js', 'home.js', 'catalog-front.js', 'app.js', 'space.js', 'vendor/asciinema-player/asciinema-player.css', 'vendor/asciinema-player/asciinema-player.min.js'];
-const OWN_FILES = [...ASSETS.filter((f) => !f.startsWith('vendor/')), 'ext.svg'];
+const OWN_FILES = [...ASSETS.filter((f) => !f.startsWith('vendor/')), 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml'];
 
 /** `root` is the catalog repository; `dataDir` replaces fetching each plugin, as the tests do; `opts.nerdRepo` is nerd's. */
 export function build(out, dataDir, root = repo, opts = {}) {
