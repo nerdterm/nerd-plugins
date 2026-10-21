@@ -125,7 +125,7 @@ and the panel keeps its scroll. History (recently viewed plugins) lives in the s
 - **Say only what nerd does as written.** The nerd pages are generated from nerd's README.md, docs/*.md
   (except the contributors' rules, menus.md and releasing.md), CHANGELOG.md and SECURITY.md by `site/build.mjs`
   (`--nerd-repo`); never retype them. A claim that needs a footnote to stay true
-  is rewritten. In particular: panes and agents run as you unless their isolation says otherwise; there is no Homebrew formula yet; no invented
+  is rewritten. In particular: panes and agents run as you unless their isolation says otherwise; no invented
   numbers, users, quotes or logos.
 - Plain words, full values, no decoration: no emoji, gradients, glass, shadows, rounded cards, carousels,
   marketing superlatives.
