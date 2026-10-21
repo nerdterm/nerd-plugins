@@ -239,7 +239,7 @@ test('nerd\'s docs build the same site from one README or from a README with doc
   // the README's Documentation list is not a page: the pages it links take its place, in its order
   assert.deepEqual(split.docs.map((p) => p.slug), ['installation', 'quick-start', 'requirements', 'limitations', 'usage', 'isolation', 'messages-between-agents', 'plugins', 'privacy-and-security', 'troubleshooting', 'uninstall', 'license']);
   assert.deepEqual([...split.egress].sort(), [...one.egress].sort(), 'the ways out are read from docs/privacy-and-security.md');
-  assert.equal(split.egress.length, 9);
+  assert.equal(split.egress.length, 10);
   assert.deepEqual([(one.lede.match(/<li>/g) || []).length, (split.lede.match(/<li>/g) || []).length], [6, 4]);
   const page = (s) => split.docs.find((p) => p.slug === s);
   assert.deepEqual(page('usage').subs.map((x) => x.slug), ['keys', 'updating']);
@@ -605,10 +605,10 @@ test('the home page is nerd drawn as a plan, then its README, and the status lin
   const { out } = sites();
   const h = page(out, '/'), m = main(h);
   assert.equal(text(m.match(/<h1>(.*?)<\/h1>/)[1]), 'Shells. Agents. You decide.');
-  assert.deepEqual([...m.matchAll(/<div class="h7d"[^>]*><b>(.*?)<\/b>/g)].map((x) => text(x[1])), ['git', 'ssh', 'a plugin with network', 'pane proxy', 'a link or a file', 'the clipboard', 'Claude Code’s inbox']);
-  assert.deepEqual([...m.matchAll(/<div class="h7d"[^>]*><b>.*?<\/b><code>(.*?)<\/code>/g)].map((x) => text(x[1].replace('<br>', ''))), ['git clone …', 'remote: ssh …', 'plugin … started: network …plugin … proxy: …', 'pane N proxy: …', 'link opened …', 'copied N characters', 'message … via inbox: delivered']);
+  assert.deepEqual([...m.matchAll(/<div class="h7d"[^>]*><b>(.*?)<\/b>/g)].map((x) => text(x[1])), ['git', 'curl to GitHub', 'ssh', 'a plugin with network', 'pane proxy', 'a link or a file', 'the clipboard', 'Claude Code’s inbox']);
+  assert.deepEqual([...m.matchAll(/<div class="h7d"[^>]*><b>.*?<\/b><code>(.*?)<\/code>/g)].map((x) => text(x[1].replace('<br>', ''))), ['git clone …', 'release check: …', 'remote: ssh …', 'plugin … started: network …plugin … proxy: …', 'pane N proxy: …', 'link opened …', 'copied N characters', 'message … via inbox: delivered']);
   const markers = nerdDocs(nerdRepo).egress.sort();
-  assert.equal(markers.length, 9, 'the fixture README marks every way out nerd has');
+  assert.equal(markers.length, 10, 'the fixture README marks every way out nerd has');
   assert.deepEqual([...m.matchAll(/data-egress="([^"]+)"/g)].map((x) => x[1]).sort(), markers, 'every way out README marks has its room, door or line on the plan');
   assert.deepEqual([...m.matchAll(/<h2 id="[^"]*" class="h7h">(.*?)<\/h2>/g)].map((x) => text(x[1])), ['Start in a minute', 'What nerd knows about your agents', 'What else is in it', 'Plugins', 'Limits, said plainly']);
   assert.deepEqual([...m.matchAll(/<tbody><tr><td>(.*?)<\/td>/g)].map((x) => text(x[1])), ['Claude Code'], 'the agents table is the README\'s');

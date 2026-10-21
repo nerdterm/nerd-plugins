@@ -9,6 +9,7 @@
     p1: 'A plugin that writes: only the folders its manifest names, and its own data folder.',
     p2: 'A plugin with network: this Mac’s own services, or only the hosts and ports its manifest names, through a proxy nerd runs for it alone.',
     git: 'From your own process, outside the server’s sandbox, only when you add or update a plugin, check for updates or refresh the catalog. Never in the background.',
+    release: 'From your own process, outside the server’s sandbox: /usr/bin/curl asks api.github.com for nerd’s latest release when you choose Check for a new release…, or once a day after you answered yes to Check for new releases. Sends your IP address and curl’s version, nothing else; installs a release only on your click.',
     ssh: 'From the client, only when you connect to another computer, through your own ssh config, keys and agent.',
     proxy: 'Only for a plugin you approved with a network permission: this Mac’s own services, or the hosts and ports its manifest names through a proxy nerd runs for that plugin alone.',
     panenet: 'Only for a pane set to Only these providers (Isolation…): the hosts and ports the chosen agents name, through a proxy nerd runs for that pane alone.',
@@ -18,9 +19,9 @@
   };
   // where each door's data comes from (src/install.rs runs git in your process; ssh is the client's; links and pbcopy are
   // the server's), and which links between rooms a choice lights: [link, 'to' | 'back' | 'both']
-  const FROM = { git: 'client', ssh: 'client', proxy: 'p2', panenet: 'prog', link: 'server', clip: 'server', inbox: 'server' };
+  const FROM = { git: 'client', release: 'client', ssh: 'client', proxy: 'p2', panenet: 'prog', link: 'server', clip: 'server', inbox: 'server' };
   // README "What leaves nerd" marks each way out <!-- egress:name -->; each has its room or door here (build.mjs checks)
-  const EGRESS = { 'git-fetch': 'git', ssh: 'ssh', 'plugin-network': 'proxy', 'pane-network': 'panenet', link: 'link', clipboard: 'clip', 'agent-inbox': 'inbox', pane: 'prog', 'sandbox-off': 'key' };
+  const EGRESS = { 'git-fetch': 'git', 'release-check': 'release', ssh: 'ssh', 'plugin-network': 'proxy', 'pane-network': 'panenet', link: 'link', clipboard: 'clip', 'agent-inbox': 'inbox', pane: 'prog', 'sandbox-off': 'key' };
   const LINKS = { client: [['l1', 'both']], server: [['l1', 'both'], ['l2', 'both']], prog: [['l2', 'both']], clip: [['l1', 'back']] };
 
   (globalThis.NERD_HOMES ||= {}).home = (rt, api) => {
@@ -47,6 +48,7 @@
     ].map(([k, n, rows]) => room(k, 'pl sb', `plugin ${n}`, kv(rows))).join('');
     const doors = [
       door('git', 'git', 'add or update a plugin, check for updates, refresh the catalog', 'git clone …'),
+      door('release', 'curl to GitHub', 'check for a new release, or once a day after you said yes', 'release check: …'),
       door('ssh', 'ssh', 'connect to another computer', 'remote: ssh …'),
       door('proxy', 'a plugin with network', 'a plugin you approved with network', 'plugin … started: network …<br>plugin … proxy: …'),
       door('panenet', 'pane proxy', 'a pane set to Only these providers', 'pane N proxy: …'),
