@@ -20,16 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - env:
           GH_TOKEN: ${{ github.token }}
+          BRANCH: chore/stars-${{ github.run_id }}
+        # main takes changes only through a pull request: the count goes in as one and merges itself
         run: |
           scripts/stars.sh
           git add stars.json
           git diff --cached --quiet && exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add stars.json
+          git switch -c "$BRANCH"
           git commit -m 'chore: count stars'
-          git push
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title 'chore: count stars' --body 'Counted by the stars workflow.'
+          gh pr merge "$BRANCH" --squash --delete-branch
