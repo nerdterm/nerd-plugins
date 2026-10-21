@@ -36,13 +36,18 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* a link to another page swaps it in place, with no blank frame and no fade */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 body { background: var(--ground); color: var(--text); font: 13px/var(--line) var(--mono); -webkit-text-size-adjust: 100%; }
 @media (max-width: 1279px) { :root { --aside: 400px; } }
 @media (min-width: 1900px) { :root { --line: 24px; --lh: 28px; --side: 280px; --aside: 592px; } body { font-size: 15px; } }
 a { color: inherit; text-decoration: underline; text-decoration-color: var(--slab); text-underline-offset: .2em; }
 a:hover { text-decoration-color: var(--text); }
 /* a link that leaves the site ends in a small north-east arrow, drawn from a file of the site's own */
-a[href^="http"]::after { content: ""; display: inline-block; width: .72em; height: .72em; margin-left: var(--s1); vertical-align: .02em; background: currentColor; -webkit-mask: url("ext.svg") center / contain no-repeat; mask: url("ext.svg") center / contain no-repeat; }
+a[href^="http"]::after { content: ""; display: inline-block; width: .72em; height: .72em; margin-left: var(--s1); vertical-align: .02em; background: currentColor; -webkit-mask: var(--ext) center / contain no-repeat; mask: var(--ext) center / contain no-repeat; }
+/* in the stylesheet itself, so the arrow is there on a page's first paint rather than a moment later */
+:root { --ext: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 8L8 2M3.5 2H8v4.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 h1, h2, h3, h4 { font: inherit; margin: 0; }
@@ -73,7 +78,7 @@ code, pre { font: inherit; }
 #space { display: none; }
 
 .brand { display: flex; align-items: center; gap: var(--s2); text-decoration: none; }
-.brand img { height: 20px; width: auto; display: block; }
+.brand svg { height: 20px; width: auto; display: block; }
 :root:not([data-theme="dark"]) .brand .dk, :root[data-theme="dark"] .brand .lt { display: none; }
 .brand span { color: var(--muted); }
 a.brand:hover { opacity: .78; }
@@ -93,8 +98,9 @@ a.btn { display: inline-block; }
 .frame { position: relative; border: 1px solid var(--border); margin-top: var(--s4); min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .frame > .t { position: absolute; top: 0; left: calc(var(--in) - .8ch); transform: translateY(-52%); padding: 0 var(--s2); background: var(--ground); color: var(--muted); white-space: nowrap; max-width: calc(100% - 3ch); overflow: hidden; text-overflow: ellipsis; z-index: 1; line-height: round(up, 1.2em, 4px); }
 .frame > .t.r { left: auto; right: calc(var(--in) - .8ch); color: var(--faint); }
-.frame.focus { border-color: var(--focus); }
-.frame.focus > .t:not(.r) { color: var(--accent); }
+/* before app.js marks a frame: the main frame, or the nav when theme.js read that it was the last one in use */
+.frame.focus, :root[data-panel="tree"] #tree, :root:not([data-panel]) #main .frame.primary { border-color: var(--focus); }
+.frame.focus > .t:not(.r), :root[data-panel="tree"] #tree > .t:not(.r), :root:not([data-panel]) #main .frame.primary > .t:not(.r) { color: var(--accent); }
 .frame > .body { padding: var(--s4) var(--in); overflow: auto; min-height: 0; flex: 1; }
 .frame.fill { flex: 1; }
 /* a frame's title reaches 48% of a line (at most 12px) into it: what scrolls there is cut off, so nothing passes over the border line;

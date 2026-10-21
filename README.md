@@ -7,7 +7,7 @@
 
 **The catalog of reviewed plugins for nerd.**
 
-[Browse plugins](https://nerdterm.dev/#/plugins) · [Add yours](#adding-or-updating-a-plugin) · [nerdterm.dev](https://nerdterm.dev)
+[Browse plugins](https://nerdterm.dev/plugins/) · [Add yours](#adding-or-updating-a-plugin) · [nerdterm.dev](https://nerdterm.dev)
 
 </div>
 
@@ -126,9 +126,13 @@ catalog's current release, or removed) or that users are warned about (`soft`):
 nerd's: `node site/build.mjs <out> --nerd-repo <nerd's repository> [--nerd <path>]`; `node --test site/test.mjs` tests
 it. It needs `git` and `nerd`: what each plugin may do and the newest nerd version come from the nerd `--nerd` names
 (`nerd` on PATH by default), and the build prints which version that is. It also stops when nerd's README marks a way
-out of nerd (`<!-- egress:… -->`) that the home page does not draw. It writes one page, `index.html`, with the catalog embedded in it, the same data as
-`catalog.json`, each plugin's `demo.cast` under `casts/`, and `nerd-docs.js`: nerd's README.md,
-`docs/*.md` (except the contributors' rules, `menus.md` and `releasing.md`), `CHANGELOG.md` and `SECURITY.md`, which the pages about nerd render, so they say what nerd's repository says.
+out of nerd (`<!-- egress:… -->`) that the home page does not draw. It writes one file per page, each complete without a script (`/`, `/install/`, `/docs/<page>/`,
+`/security/`, `/changelog/`, `/plugins/`, `/plugins/all/`, `/plugins/<name>/` with its `review/`, `releases/` and
+`related/` tabs, `/authors/<owner>/`, the site's own pages, and `404.html`), `sitemap.xml` listing them all, `catalog.json`,
+each plugin's `demo.cast` under `casts/`, and `data.js`, what the browser's conveniences (the theme, the search, the list's
+filters) read. The pages about nerd are rendered from nerd's README.md, `docs/*.md` (except the contributors' rules,
+`menus.md` and `releasing.md`), `CHANGELOG.md` and `SECURITY.md`, so they say what nerd's repository says. A plugin cannot be
+called `all`, `why`, `review` or `add`: those are pages under `/plugins/`, and the build stops.
 How the site is designed, and the checks a visible change passes, are in `site/DESIGN.md`. The page loads
 nothing from elsewhere at view time (its Content-Security-Policy allows only its own files), uses the system's
 fonts, and vendors asciinema-player (Apache-2.0) for recordings. The logo in `site/brand/` is nerd's, copied

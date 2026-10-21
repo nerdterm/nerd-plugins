@@ -1,21 +1,28 @@
 // nerdterm.dev, built from this repository and nerd's: `node site/build.mjs <out> --nerd-repo <dir> [--nerd <path>] [--data <dir>] [--catalog <dir>]`.
-// One page (index.html, the catalog embedded as JSON), catalog.json (the same data) and nerd-docs.js (nerd's README.md,
-// docs/*.md except the contributors' rules, CHANGELOG.md and SECURITY.md, so the pages about nerd say what its repository says). Everything shown is derived:
+// One file per page, each complete without a script (app/render.js draws them; the pages about nerd come from its
+// README.md, docs/*.md except the contributors' rules, CHANGELOG.md and SECURITY.md, so they say what its repository
+// says), sitemap.xml, catalog.json and data.js (what the browser's conveniences read). Everything shown is derived:
 // dates and versions from this repository's git history, stars from stars.json and its history, what a plugin may do
 // from `nerd --plugin-check` and its plugin.json at the catalog's commit. Only `featured` and official.json are set by hand.
-// The page loads nothing from anywhere else, sets no cookie and counts nothing.
+// The pages load nothing from anywhere else, set no cookie and count nothing.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import render from './app/render.js';
+import './app/pages.js';
+import './app/home.js';
+import './app/catalog-front.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
+const SITE = 'https://nerdterm.dev';
 
-// The player decodes recordings in WebAssembly, which script-src must allow and nothing else needs.
-export const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
+// The player decodes recordings in WebAssembly, which script-src must allow and nothing else needs. img-src data: is
+// for the stylesheet's own link arrow.
+export const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 export function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -524,7 +531,9 @@ export function catalog(root, dataDir, opts = {}) {
         v.widened = Boolean(older) && (v.risk > older.risk || widened(perms[i + 1], perms[i]));
         v.diff = older ? manifestDiff(d.manifests?.[older.commit], d.manifests?.[v.commit]) : null;
       });
-      const owner = String(e.url).match(/^https:\/\/github\.com\/([^/]+)\//)?.[1] ?? '';
+      // the owner names a page, /authors/<owner>/: only from an address the GitHub pattern accepts
+      // GitHub's logins ignore case, and one page per account must not depend on the disk's case
+      const owner = GITHUB.test(e.url) ? e.url.match(/^https:\/\/github\.com\/([^/]+)\//)[1].toLowerCase() : '';
       const count = Number.isInteger(stars.stars[e.name]) ? stars.stars[e.name] : null;
       const g = Object.fromEntries([7, 30, 90].map((n) => [n, gain(e.name, count, stars.history, today, n)]));
       const series = starSeries(e.name, count, stars.history, today);
@@ -622,6 +631,10 @@ export function pluginReads(md) {
 // file exists; anchors point at the page that holds them, relative links at their page or the repository, and the
 // changelog is split by release.
 const slug = (t) => t.toLowerCase().replace(/<[^>]+>/g, '').replace(/[`*]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// README sections that are parts of the Install and Security pages rather than docs pages of their own
+const PART = { requirements: 'install', limitations: 'install', installation: 'install', uninstall: 'install', 'privacy-and-security': 'security' };
+// a document's address, absolute so markdown() keeps it; html() makes it the site's own path
+const pageUrl = (s, a = '') => `${SITE}${PART[s] ? `/${PART[s]}/` : `/docs/${s}/`}${a ? `#${a}` : ''}`;
 export function nerdDocs(dir) {
   const read = (f) => fs.readFileSync(path.join(dir, f), 'utf8');
   const has = (f) => fs.existsSync(path.join(dir, f));
@@ -651,33 +664,33 @@ export function nerdDocs(dir) {
     filePage[p.file] ??= p.slug;
     for (const l of p.md) { const h = l.match(/^#{2,4} (.*)$/); if (h) anchorPage[slug(h[1])] ??= p.slug; }
   }
-  const SITE = 'https://nerdterm.dev/#/', GH = 'https://github.com/nerdterm/nerd/blob/master/';
+  const GH = 'https://github.com/nerdterm/nerd/blob/master/';
   // a README anchor is on the page that holds it; a page's own anchor is that page, whose title is not an element
-  const readmeTo = (a) => (anchorPage[a] === a ? `docs/${a}` : `docs/${anchorPage[a] || a}#${a}`);
-  // A bare #anchor stays on its document's page (`page`) when that document has the heading, else it goes to the page
-  // that has it; a relative link is read from the document's folder (`base`) and goes to its page, or to the repository.
+  const readmeTo = (a) => (anchorPage[a] === a ? pageUrl(a) : pageUrl(anchorPage[a] || a, a));
+  // A bare #anchor stays on its document's page (`page`, an address) when that document has the heading, else it goes
+  // to the page that has it; a relative link is read from the document's folder (`base`) and goes to its page, or to the repository.
   const prep = (md, page, base = '') => {
     const own = new Set(md.split('\n').map((l) => l.match(/^#{1,4} (.*)$/)?.[1]).filter(Boolean).map(slug));
     const to = (a) => (page && (own.has(a) || !anchorPage[a]) ? `${page}#${a}` : readmeTo(a));
     const rel = (t) => {
       const [p, a] = t.split('#');
       const file = path.posix.normalize(base + p);
-      if (file === 'README.md') return `${SITE}${a ? readmeTo(a) : ''}`;
-      if (filePage[file]) return `${SITE}docs/${filePage[file]}${a ? `#${a}` : ''}`;
+      if (file === 'README.md') return a ? readmeTo(a) : `${SITE}/`;
+      if (filePage[file]) return pageUrl(filePage[file], a);
       return `${GH}${file}${a ? `#${a}` : ''}`;
     };
     return md
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/^<\/?(details|summary|div|picture|source|img|h1)[^>]*>.*$/gm, '')
     .replace(/<summary>(.*?)<\/summary>/g, '**$1**')
-    .replace(/\]\(#([a-z0-9-]+)\)/g, (m, a) => `](${SITE}${to(a)})`)
+    .replace(/\]\(#([a-z0-9-]+)\)/g, (m, a) => `](${to(a)})`)
     .replace(/\]\((?!https?:|#)([^)\s]+)\)/g, (m, t) => `](${rel(t)})`);
   };
   const html = (md, page, base) => {
     const ids = new Set();
     return markdown(prep(md, page, base))
       .replace(/<h(\d)>(.*?)<\/h\1>/g, (m, n, t) => { let id = slug(t); while (ids.has(id)) id += '-'; ids.add(id); return `<h${n} id="${id}">${t}</h${n}>`; })
-      .replace(/href="https:\/\/nerdterm\.dev\/#\//g, 'href="#/');
+      .replace(/href="https:\/\/nerdterm\.dev\//g, 'href="/');
   };
   // the Security page sums up the ways out in nerd's own words: the sentence that opens "What leaves nerd"
   const leaves = pages.map((p) => { const i = p.md.findIndex((l) => /^#{2,4} What leaves nerd$/.test(l)); return i < 0 ? '' : p.md.slice(i + 1).join('\n').split(/\n\s*\n/).map((x) => x.trim()).find(Boolean) ?? ''; }).find(Boolean) ?? '';
@@ -687,7 +700,7 @@ export function nerdDocs(dir) {
   const versions = [];
   for (const part of read('CHANGELOG.md').split(/\n(?=## \[)/).slice(1)) {
     const m = part.match(/^## \[([^\]]+)\]\(([^)]+)\) \(([^)]+)\)/);
-    if (m) versions.push({ version: m[1], compare: m[2], date: m[3], html: html(part.split('\n').slice(1).join('\n'), 'changelog') });
+    if (m) versions.push({ version: m[1], compare: m[2], date: m[3], html: html(part.split('\n').slice(1).join('\n'), `${SITE}/changelog/`) });
   }
   const plugins = read('docs/plugins.md');
   return {
@@ -696,9 +709,9 @@ export function nerdDocs(dir) {
     tagline,
     lede: html(lede),
     waysOut: markdown(waysOut).replace(/^<p>|<\/p>$/g, ''),
-    docs: pages.map((p) => ({ title: p.title, slug: p.slug, file: p.file, subs: subs(p), html: p.file === 'README.md' ? html(p.md.join('\n')) : html(p.md.join('\n'), `docs/${p.slug}`, 'docs/') })),
+    docs: pages.map((p) => ({ title: p.title, slug: p.slug, file: p.file, part: PART[p.slug] ?? null, subs: subs(p), html: p.file === 'README.md' ? html(p.md.join('\n')) : html(p.md.join('\n'), pageUrl(p.slug), 'docs/') })),
     anchors: anchorPage,
-    security: html(read('SECURITY.md').replace(/^# .*\n/, ''), 'security'),
+    security: html(read('SECURITY.md').replace(/^# .*\n/, ''), `${SITE}/security/`),
     changelog: versions,
     pluginReads: pluginReads(plugins),
     egress: [readme, ...pages.filter((p) => p.file !== 'README.md').map((p) => p.md.join('\n'))].flatMap((md) => [...md.matchAll(/<!-- egress:([a-z0-9-]+) -->/g)].map((m) => m[1])),
@@ -714,32 +727,51 @@ export function egressMissing(markers, homeJs) {
 
 /** The first 10 hex of a content's sha256: a browser asks again for a file only when this changes. */
 export const fingerprint = (content) => createHash('sha256').update(content).digest('hex').slice(0, 10);
-// The page's own files, referenced as `<file>?v=<fingerprint>` so an update is never served from an old cache.
-const ASSETS = ['theme.js', 'style.css', 'site.css', 'pages.css', 'home.css', 'catalog-front.css', 'pages.js', 'home.js', 'catalog-front.js', 'app.js', 'space.js', 'vendor/asciinema-player/asciinema-player.css', 'vendor/asciinema-player/asciinema-player.min.js'];
-const OWN_FILES = [...ASSETS.filter((f) => !f.startsWith('vendor/')), 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml'];
+// The pages' own files, referenced as `/<file>?v=<fingerprint>` so an update is never served from an old cache.
+const ASSETS = ['theme.js', 'style.css', 'site.css', 'pages.css', 'home.css', 'catalog-front.css', 'render.js', 'home.js', 'catalog-front.js', 'app.js', 'space.js', 'vendor/asciinema-player/asciinema-player.css', 'vendor/asciinema-player/asciinema-player.min.js'];
+const OWN_FILES = [...ASSETS.filter((f) => !f.startsWith('vendor/')), 'favicon.svg', 'og.png', 'robots.txt'];
+// pages of the site under /plugins/: a plugin cannot be called the same
+const RESERVED = ['all', 'why', 'review', 'add'];
 
 /** `root` is the catalog repository; `dataDir` replaces fetching each plugin, as the tests do; `opts.nerdRepo` is nerd's. */
 export function build(out, dataDir, root = repo, opts = {}) {
   if (!opts.nerdRepo) throw new Error('the pages about nerd need nerd\'s repository: --nerd-repo <dir>');
-  // inside a script element only `</` could end it early; JSON never needs a raw `<`
   const nd = nerdDocs(opts.nerdRepo);
   const gone = egressMissing(nd.egress, fs.readFileSync(path.join(here, 'app', 'home.js'), 'utf8'));
   if (gone.length) throw new Error(`nerd's README names ways out the home page does not draw: ${gone.join(', ')} (EGRESS in site/app/home.js)`);
-  const docs = `// Built from nerd's repository by site/build.mjs; do not edit.\nwindow.NERD_DOCS = ${JSON.stringify(nd).replace(/</g, '\\u003c')};\n`;
   const { data, casts } = catalog(root, dataDir, opts);
+  const clash = data.plugins.filter((p) => RESERVED.includes(p.name)).map((p) => p.name);
+  if (clash.length) throw new Error(`a plugin cannot be called ${clash.join(', ')}: /plugins/${clash[0]}/ is a page of the site`);
+  const R = render(data, nd);
+  // the browser keeps only what its conveniences read: the catalog without the READMEs, the docs' titles and parts.
+  // Inside a script only `</` could end it early; JSON never needs a raw `<`.
+  const js = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
+  const dataJs = `// Built by site/build.mjs; do not edit.\nwindow.NERD_DATA = ${js({ ...data, plugins: data.plugins.map(({ readme, ...p }) => p) })};\nwindow.NERD_DOCS = ${js({ version: nd.version, pluginReads: nd.pluginReads, docs: nd.docs.map(({ title, slug, file, part, subs }) => ({ title, slug, file, part, subs })) })};\n`;
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(path.join(out, 'casts'), { recursive: true });
-  // Inside a script element only `</` could end it early; JSON never needs a raw `<`.
-  const json = JSON.stringify(data).replace(/</g, '\\u003c');
   const source = (f) => path.join(here, f.startsWith('vendor/') ? '' : 'app', f);
-  let html = fs
-    .readFileSync(path.join(here, 'app', 'index.html'), 'utf8')
-    .replace('@@CSP@@', CSP)
-    .replace('@@DATA@@', () => json);
-  for (const f of ASSETS) html = html.replace(`"${f}"`, `"${f}?v=${fingerprint(fs.readFileSync(source(f)))}"`);
-  html = html.replace('"nerd-docs.js"', `"nerd-docs.js?v=${fingerprint(docs)}"`);
-  fs.writeFileSync(path.join(out, 'index.html'), html);
-  fs.writeFileSync(path.join(out, 'nerd-docs.js'), docs);
+  // the wordmark is drawn in the page, not loaded, so it is there on the first paint
+  const mark = (f, cls) => fs.readFileSync(path.join(here, 'brand', f), 'utf8').trim().replace(/^<svg /, `<svg class="${cls}" aria-hidden="true" `);
+  let tpl = fs.readFileSync(path.join(here, 'app', 'page.html'), 'utf8').replace('@@CSP@@', CSP).replace('@@VERSION@@', esc(nd.version ?? ''))
+    .replace('@@WORDMARK@@', () => mark('nerd-wordmark-dark.svg', 'dk') + mark('nerd-wordmark-light.svg', 'lt'));
+  for (const f of ASSETS) tpl = tpl.replace(`"/${f}"`, `"/${f}?v=${fingerprint(fs.readFileSync(source(f)))}"`);
+  tpl = tpl.replace('"/data.js"', `"/data.js?v=${fingerprint(dataJs)}"`);
+  const write = (file, pg, url) => {
+    // the frame focused on load is marked in the file, so style.css draws it from the first paint
+    const main = /class="[^"]*\bprimary\b/.test(pg.html) ? pg.html : pg.html.replace(/class="frame\b/, 'class="frame primary');
+    const html = tpl.replace(/@@TITLE@@/g, () => esc(pg.title)).replace(/@@DESC@@/g, () => esc(pg.desc)).replace(/@@URL@@/g, url).replace('@@TREE@@', () => pg.tree).replace('@@MAIN@@', () => main);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, html);
+  };
+  const q = new URLSearchParams();
+  const pages = R.pages();
+  for (const pg of pages) write(path.join(out, pg.path, 'index.html'), R.page({ seg: pg.seg, q }), SITE + pg.path);
+  write(path.join(out, '404.html'), R.page({ seg: ['404'], q }), `${SITE}/404.html`);
+  // /docs/ opens the first docs page
+  const first = R.docHref(R.DOCNAV[0]);
+  fs.writeFileSync(path.join(out, 'docs', 'index.html'), `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=${first}"><title>Docs · nerd</title><a href="${first}">Docs</a>\n`);
+  fs.writeFileSync(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((pg) => `  <url><loc>${SITE}${pg.path}</loc></url>`).join('\n')}\n</urlset>\n`);
+  fs.writeFileSync(path.join(out, 'data.js'), dataJs);
   fs.writeFileSync(path.join(out, 'catalog.json'), JSON.stringify(data, null, 1) + '\n');
   for (const [name, cast] of Object.entries(casts)) fs.writeFileSync(path.join(out, 'casts', `${name}.cast`), cast);
   for (const f of OWN_FILES) fs.copyFileSync(path.join(here, 'app', f), path.join(out, f));

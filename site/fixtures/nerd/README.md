@@ -73,6 +73,7 @@ Each way out starts from something you do, says where it goes before it goes, an
 | Way out | When | Logged as |
 |---|---|---|
 | <!-- egress:git-fetch --> `git` | You add a plugin. | `git clone …` |
+| <!-- egress:release-check --> `curl` to GitHub | You check for a new release. | `release check: …` |
 | <!-- egress:ssh --> `ssh` | You connect to another computer. | `remote: ssh …` |
 | <!-- egress:plugin-network --> A plugin with network | It runs. | `plugin … proxy: …` |
 | <!-- egress:pane-network --> A pane set to Only these providers | Its program starts. | `pane N proxy: …` |

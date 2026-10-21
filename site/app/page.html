@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="@@CSP@@">
+<meta name="referrer" content="no-referrer">
+<title>@@TITLE@@</title>
+<link rel="canonical" href="@@URL@@">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="nerd">
+<meta property="og:title" content="@@TITLE@@">
+<meta property="og:description" content="@@DESC@@">
+<meta property="og:url" content="@@URL@@">
+<meta property="og:image" content="https://nerdterm.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The nerd globe logo and the line: A terminal multiplexer that shows what your AI agents are doing.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="description" content="@@DESC@@">
+<script src="/theme.js"></script>
+<link rel="stylesheet" href="/vendor/asciinema-player/asciinema-player.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/site.css">
+<link rel="stylesheet" href="/pages.css">
+<link rel="stylesheet" href="/home.css">
+<link rel="stylesheet" href="/catalog-front.css">
+</head>
+<body>
+<div id="win">
+  <header id="bar">
+    <button class="btn" id="drawerBtn" aria-controls="tree" aria-expanded="false" aria-label="Menu">Menu</button>
+    <a class="brand" href="/" aria-label="nerd, home">@@WORDMARK@@</a>
+    <div id="tq" role="search"><label class="tqf"><span aria-hidden="true">/</span><input id="tqIn" type="search" autocomplete="off" spellcheck="false" placeholder="search docs, settings, plugins" aria-label="Search nerdterm.dev" aria-controls="tqList"></label><div id="tqList" role="listbox" hidden></div></div>
+  </header>
+  <aside id="tree" class="frame" aria-label="Site"><h2 class="t">nav</h2><div class="body">@@TREE@@</div></aside>
+  <main id="main">@@MAIN@@</main>
+  <footer id="status"><a class="s-link" id="sVer" href="/changelog/">nerd @@VERSION@@</a><a class="s-link s-gh" href="https://github.com/nerdterm/nerd" rel="noopener">GitHub</a><span class="theme" id="theme" role="group" aria-label="Appearance"><button data-theme="system">System</button><button data-theme="light">Light</button><button data-theme="dark">Dark</button></span></footer>
+</div>
+<script src="/data.js"></script>
+<script src="/vendor/asciinema-player/asciinema-player.min.js"></script>
+<script src="/render.js"></script>
+<script src="/home.js"></script>
+<script src="/catalog-front.js"></script>
+<script src="/app.js"></script>
+<script src="/space.js"></script>
+</body>
+</html>

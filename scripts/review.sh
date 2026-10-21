@@ -20,6 +20,8 @@ others=$(git diff --name-only "$base"...HEAD | grep -v '^plugins/[a-z0-9-]*\.jso
 entry=$changed
 [ -f "$entry" ] && [ ! -L "$entry" ] || { echo "$entry is not a plain file" >&2; exit 1; }
 name=$(basename "$entry" .json)
+# the site's own pages under /plugins/ (RESERVED in site/build.mjs): a plugin there would stop the site's build
+case "$name" in all|why|review|add) echo "$name is the name of a page of the site, not free for a plugin" >&2; exit 1 ;; esac
 url=$(jq -r .url "$entry")
 tag=$(jq -r .tag "$entry")
 commit=$(jq -r .commit "$entry")

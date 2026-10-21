@@ -1,6 +1,6 @@
-// Install, Docs, Security, Changelog: every word of them is rendered from window.NERD_DOCS.
+// Install, Docs, Security, Changelog: every word of them is rendered from nerd's docs at build time; the browser never loads this file.
 (() => {
-  const V = (window.NERD_VIEWS ||= {});
+  const V = (globalThis.NERD_VIEWS ||= {});
   const REPO = 'https://github.com/nerdterm/nerd';
   const SCRIPT = `${REPO}/blob/master/install.sh`;
 
@@ -17,17 +17,17 @@
   const install = (rt, api) => {
     const D = api.DOCS, sec = (s) => D.docs.find((d) => d.slug === s).html, fr = api.frame;
     const inst = sec('installation'), cut = inst.indexOf('<pre>', inst.indexOf('</pre>'));
-    const items = [['#/install', 'Install'], ['#/install#requirements', 'Requirements'], ['#/install#limitations', 'Limitations'], ['#/install#build-from-source', 'Build from source'], ['#/install#updating', 'Updating'], ['#/install#uninstall', 'Uninstall']];
+    const items = [['/install/', 'Install'], ['/install/#requirements', 'Requirements'], ['/install/#limitations', 'Limitations'], ['/install/#build-from-source', 'Build from source'], ['/install/#updating', 'Updating'], ['/install/#uninstall', 'Uninstall']];
     const frames =
       fr('install', `${api.cmdBox(api.INSTALL)}
-        <p class="pg-line">${link(SCRIPT, 'Read the script first', 1)}. Current version: <b>${api.esc(D.version)}</b>, released ${api.esc(D.released)}; ${link('#/changelog', 'what changed')}.</p>
+        <p class="pg-line">${link(SCRIPT, 'Read the script first', 1)}. Current version: <b>${api.esc(D.version)}</b>, released ${api.esc(D.released)}; ${link('/changelog/', 'what changed')}.</p>
         ${doc(inst.slice(inst.indexOf('</pre>') + 6, cut))}`, { cls: 'primary', id: 'install', r: `nerd ${api.esc(D.version)}` }) +
       fr('requirements', doc(sec('requirements')), { id: 'requirements' }) +
       fr('limitations', doc(sec('limitations')), { id: 'limitations' }) +
       fr('build from source', doc(inst.slice(cut)), { id: 'build-from-source' }) +
       fr('updating', doc(part(sec('usage'), 'updating')), { id: 'updating' }) +
       fr('uninstall', doc(sec('uninstall')), { id: 'uninstall' }) +
-      `<p class="pg-next"><span>Next</span> ${link('#/docs/quick-start', 'Quick start')}</p>`;
+      `<p class="pg-next"><span>Next</span> ${link('/docs/quick-start/', 'Quick start')}</p>`;
     return layout(items, frames);
   };
 
@@ -35,15 +35,15 @@
     const D = api.DOCS, slug = rt.seg[1] || 'quick-start', nav = api.DOCNAV, d = nav.find((x) => x.slug === slug) || D.docs.find((x) => x.slug === slug);
     if (!d) return api.missing('This page is not in the docs.');
     const i = nav.indexOf(d), prev = nav[i - 1], next = nav[i + 1], file = d.file || 'README.md';
-    const items = d.subs.map((s) => [`#/docs/${slug}#${s.slug}`, api.esc(s.title)]);
-    const pager = `<div class="pg-pager">${prev ? `<a class="prev" href="#/docs/${prev.slug}"><span>Previous</span>${api.esc(prev.title)}</a>` : '<i></i>'}${next ? `<a class="next" href="#/docs/${next.slug}"><span>Next</span>${api.esc(next.title)}</a>` : '<i></i>'}</div>
+    const items = d.subs.map((s) => [api.docHref(d, s.slug), api.esc(s.title)]);
+    const pager = `<div class="pg-pager">${prev ? `<a class="prev" href="${api.docHref(prev)}"><span>Previous</span>${api.esc(prev.title)}</a>` : '<i></i>'}${next ? `<a class="next" href="${api.docHref(next)}"><span>Next</span>${api.esc(next.title)}</a>` : '<i></i>'}</div>
       <p class="pg-edit">${link(`${REPO}/edit/master/${file}`, 'Edit on GitHub', 1)}</p>`;
     return layout(items, api.frame(api.esc(d.title), doc(d.html), { cls: 'primary' }) + pager);
   };
 
   const security = (rt, api) => {
     const D = api.DOCS, fr = api.frame;
-    const items = [['#/security', 'In short'], ['#/security#privacy', 'Privacy and security'], ['#/security#what-leaves-nerd', 'What leaves nerd'], ['#/security#what-a-program-inside-a-pane-can-do', 'What a pane can do'], ['#/security#report', 'Report a vulnerability']];
+    const items = [['/security/', 'In short'], ['/security/#privacy', 'Privacy and security'], ['/security/#what-leaves-nerd', 'What leaves nerd'], ['/security/#what-a-program-inside-a-pane-can-do', 'What a pane can do'], ['/security/#report', 'Report a vulnerability']];
     return layout(items,
       fr('in short', `<ul class="plain pg-sum">
         <li>nerd sends no telemetry.</li>
