@@ -532,7 +532,8 @@ export function catalog(root, dataDir, opts = {}) {
         v.diff = older ? manifestDiff(d.manifests?.[older.commit], d.manifests?.[v.commit]) : null;
       });
       // the owner names a page, /authors/<owner>/: only from an address the GitHub pattern accepts
-      const owner = GITHUB.test(e.url) ? e.url.match(/^https:\/\/github\.com\/([^/]+)\//)[1] : '';
+      // GitHub's logins ignore case, and one page per account must not depend on the disk's case
+      const owner = GITHUB.test(e.url) ? e.url.match(/^https:\/\/github\.com\/([^/]+)\//)[1].toLowerCase() : '';
       const count = Number.isInteger(stars.stars[e.name]) ? stars.stars[e.name] : null;
       const g = Object.fromEntries([7, 30, 90].map((n) => [n, gain(e.name, count, stars.history, today, n)]));
       const series = starSeries(e.name, count, stars.history, today);

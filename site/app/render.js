@@ -7,6 +7,7 @@
   const CATALOG_REPO = 'https://github.com/nerdterm/nerd-plugins';
   const NERD_REPO = 'https://github.com/nerdterm/nerd';
   const INSTALL = 'curl -fsSL https://nerdterm.dev/install.sh | sh';
+  const BREW = 'brew install nerdterm/tap/nerd';
   const THEME_KEY = 'nerd-plugins-theme';
   const RECENT_KEY = 'nerd-plugins-recent';
   const TITLE_HOME = 'nerd: a terminal multiplexer that shows what your AI agents are doing';
@@ -496,7 +497,7 @@
       return { html: out.html, tree: treeHtml(rt), title, desc };
     }
 
-    const API = { missing, esc, text, fmt, fmtShort, num, plural, frame, copyBtn, cmdBox, starN, gainN, roomIcons, markIcon, roomsHtml, roomVal, netWords, install, hay, filtered, listView, resultsHtml, reviewBody, treeHtml, listHref, docHref, pluginHref, page, pages, S, KIND, ROOMS, RISKW, PAGES, FOOT, SITE, FILTERS, LIVE, all, authors, byName, DATA, DOCS, DOCNAV, INSTALL, NERD_REPO, CATALOG_REPO, THEME_KEY, RECENT_KEY, sketchHtml, GLITCH };
+    const API = { missing, esc, text, fmt, fmtShort, num, plural, frame, copyBtn, cmdBox, starN, gainN, roomIcons, markIcon, roomsHtml, roomVal, netWords, install, hay, filtered, listView, resultsHtml, reviewBody, treeHtml, listHref, docHref, pluginHref, page, pages, S, KIND, ROOMS, RISKW, PAGES, FOOT, SITE, FILTERS, LIVE, all, authors, byName, DATA, DOCS, DOCNAV, INSTALL, BREW, NERD_REPO, CATALOG_REPO, THEME_KEY, RECENT_KEY, sketchHtml, GLITCH };
     return API;
   }
 

@@ -25,7 +25,7 @@
   const LINKS = { client: [['l1', 'both']], server: [['l1', 'both'], ['l2', 'both']], prog: [['l2', 'both']], clip: [['l1', 'back']] };
 
   (globalThis.NERD_HOMES ||= {}).home = (rt, api) => {
-    const { esc, all, INSTALL, copyBtn, DOCS, roomIcons, markIcon, starN, docHref, pluginHref, DOCNAV } = api;
+    const { esc, all, INSTALL, BREW, copyBtn, DOCS, roomIcons, markIcon, starN, docHref, pluginHref, DOCNAV } = api;
     const cmd = (t, cls = '') => `<div class="cmd ${cls}"><code>${esc(t).replace(/\//g, '/<wbr>').replace(/([^/>]+ \| \S+)$/, '<span class="nw">$1</span>')}</code>${copyBtn(t)}</div>`;
     const sec = (id, title, r, body) => `<section class="h7s" aria-labelledby="${id}"><header class="h7hd"><h2 id="${id}" class="h7h">${title}</h2>${r ? `<span class="h7r2">${r}</span>` : ''}</header>${body}</section>`;
     const eg = (k) => { const m = Object.keys(EGRESS).find((x) => EGRESS[x] === k); return m ? ` data-egress="${m}"` : ''; };
@@ -95,7 +95,7 @@
     const html = `<section class="frame fill home-pane"><h2 class="t">nerd</h2><div class="home"><div class="home-in h7">
       ${hero}
       ${sec('h7-start', 'Start in a minute', '<a href="/docs/quick-start/">Quick start</a>', `<div class="h7two">
-        <div><h3 class="h7sub">What it needs</h3>${req}${cmd(INSTALL, 'go')}</div>
+        <div><h3 class="h7sub">What it needs</h3>${req}${cmd(INSTALL, 'go')}<p class="h7p">Or with Homebrew, upgraded with <code>brew upgrade nerd</code>:</p>${cmd(BREW)}</div>
         <div><h3 class="h7sub">Then run it</h3><div class="cmd"><code class="pre">cd ~/code/my-project\nnerd</code>${copyBtn('nerd')}</div>
           <p class="h7p">Then, with the mouse:</p>${steps}</div></div>`)}
       ${sec('h7-agents', 'What nerd knows about your agents', '<a href="/docs/quick-start/#supported-agents">Supported agents</a>', `

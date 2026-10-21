@@ -799,6 +799,12 @@ const at = (W) => { const q = new URLSearchParams(W.location.search); q.delete('
     R.legacy = [at(W)];
     ({ W, D } = await open('/#/plugins/all?adds=previews'));
     R.legacy.push(at(W));
+    // a hash that names another site is left alone (a backslash reads as a slash in an https address)
+    R.offsite = [];
+    for (const h of ['#//evil.example/', '#/' + String.fromCharCode(92) + 'evil.example', '#///evil.example']) {
+      ({ W, D } = await open('/' + h));
+      try { R.offsite.push(W.location.origin === location.origin && W.location.pathname === '/'); } catch { R.offsite.push(false); }
+    }
     // the query string is the browser's: the list with a filter, a review tab with a release
     ({ W, D } = await open('/plugins/all/?adds=previews'));
     R.live = { on: all(D, '#tree .tr.on').map(txt), rows: all(D, '#results a.lr .nm').map(txt), set: all(D, '.fbar .dd.set summary').map(txt) };
@@ -947,6 +953,7 @@ ui('the plans come alive: a door shows its path, another plugin redraws its sand
 
 ui('a hash route from the first weeks lands on its page, and the query string is drawn by the browser', (r) => {
   assert.deepEqual(r.legacy, ['/plugins/alpha/review/?r=v1.0.0#x', '/plugins/all/?adds=previews']);
+  assert.deepEqual(r.offsite, [true, true, true], 'a hash naming another site does not send the visitor there');
   assert.deepEqual(r.live.on, ['previews2'], 'the filtered list lights its kind in the panel');
   assert.deepEqual(r.live.rows, ['alpha', 'gamma']);
   assert.deepEqual(r.live.set, ['adds: previews ▾']);
