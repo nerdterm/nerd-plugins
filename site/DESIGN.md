@@ -21,7 +21,7 @@ how each part is built, and the checks a change passes before anyone is shown it
   the wall, to its name and the exact line it writes to daemon.log. Every way out nerd's README marks
   `<!-- egress:… -->` has its room, door or line on the plan (`EGRESS` in `home.js`); the build stops otherwise. A click on a room or a door shows one line about it under the plan. Then what a plugin may do,
   what nerd does for agents, and the install command again. It must never lead with an agent sidebar.
-- **The catalog's front** (`catalog-front.js`, `#/plugins`) is built from the home page's parts: the same hero, and a
+- **The catalog's front** (`catalog-front.js`, `/plugins/`) is built from the home page's parts: the same hero, and a
   plan of one plugin's sandbox (the program, what the profile lets it read and write, and its doors: nerd, your
   files, the network, coding agents; open where its manifest names something, walled off where it names nothing),
   with a picker of the catalog's plugins and the plugin guide's example with network, said as such.
@@ -60,7 +60,7 @@ Rules that keep the grid true:
 4. **Icons in a line are the line's height** (20×20) in a flex cell. An inline icon of `1.5em` grows the line by a
    fraction of a pixel through the baseline.
 5. **A box whose height follows its width** (the logo, a recording, a still) is rounded up to the module by the
-   `snapRO` observer in `app.js`: give it the class `snap4` (players get it in `mount` and `mountCast`).
+   `snapRO` observer in `app.js`: give it the class `snap4` (players get it in `mount`).
 6. **Spacing inside a part is smaller than between parts.** Inside a block 4–12, between blocks 16–24, between
    sections 48 (a 1px rule with 24 on each side).
 7. **No baseline grid.** The web centres text in its line box; keep the vertical rhythm, do not force baselines.

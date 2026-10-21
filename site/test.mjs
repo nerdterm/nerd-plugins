@@ -156,20 +156,21 @@ test('the page carries its policy, loads only its own files and cannot be broken
   fs.writeFileSync(path.join(root, 'plugins', 'beta.json'), JSON.stringify({ ...e, title: evil }));
   const out = tmp('out');
   build(out, dir, root, { nerdRepo, today: '2026-10-05', nerd: '0.10.0' });
-  const html = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(out, 'plugins', 'beta', 'index.html'), 'utf8');
   assert.ok(html.includes(`content="${CSP}"`));
-  assert.ok(!html.includes(evil) && html.includes('\\u003c/script>'), 'a title cannot end the data early');
-  // Every file the page loads is its own: no scheme, no protocol-relative path, no @import or url() from elsewhere.
+  assert.ok(!html.includes(evil), 'a title cannot end the page early');
+  assert.ok(!read(out, 'data.js').includes(evil) && read(out, 'data.js').includes('\\u003c/script>'), 'a title cannot end the data early');
+  // Every file a page loads is its own: no scheme, no protocol-relative path, no @import or url() from elsewhere.
   for (const [m, tag, u] of html.matchAll(/<(script|link|img|iframe|source)\b[^>]*?(?:src|href)="([^"]+)"/g)) {
     // the canonical address names the page to search engines and loads nothing
-    if (/rel="canonical"/.test(m) && u === 'https://nerdterm.dev/') continue;
-    assert.ok(!/^[a-z]+:|^\/\//i.test(u), `${tag} loads ${u}`);
-    assert.ok(fs.existsSync(path.join(out, u.replace(/\?v=[0-9a-f]+$/, ''))), `${u} is in the build`);
+    if (/rel="canonical"/.test(m) && u === 'https://nerdterm.dev/plugins/beta/') continue;
+    assert.ok(/^\/[^/]/.test(u), `${tag} loads ${u}: the site's own file, from its root, whatever the page's depth`);
+    assert.ok(fs.existsSync(path.join(out, u.slice(1).replace(/\?v=[0-9a-f]+$/, ''))), `${u} is in the build`);
   }
   const css = fs.readFileSync(path.join(out, 'style.css'), 'utf8');
   assert.ok(!/@import|url\(\s*['"]?(https?:)?\/\//i.test(css), 'the stylesheet loads nothing from elsewhere');
-  const js = fs.readFileSync(path.join(out, 'app.js'), 'utf8');
-  assert.ok(!/fetch\(|XMLHttpRequest|import\(|new WebSocket|sendBeacon/.test(js), 'the script asks no server anything');
+  const js = read(out, 'app.js') + read(out, 'render.js') + read(out, 'home.js') + read(out, 'catalog-front.js');
+  assert.ok(!/fetch\(|XMLHttpRequest|import\(|new WebSocket|sendBeacon/.test(js), 'the scripts ask no server anything');
   assert.ok(!/fonts\.googleapis|cdn\.|unpkg|jsdelivr/.test(html + css + js));
   const json = JSON.parse(fs.readFileSync(path.join(out, 'catalog.json'), 'utf8'));
   assert.equal(json.plugins.length, 3);
@@ -184,7 +185,8 @@ test('an empty catalog builds a page that says so', () => {
   assert.deepEqual(list, []);
   const json = JSON.parse(fs.readFileSync(path.join(out, 'catalog.json'), 'utf8'));
   assert.deepEqual([json.plugins, json.nerdVersions, json.starsChanged], [[], ['0.10.0'], null]);
-  assert.ok(fs.readFileSync(path.join(out, 'app.js'), 'utf8').includes('The catalog has no plugins yet.'));
+  assert.match(text(main(page(out, '/plugins/all/'))), /0 of 0 plugins/);
+  assert.ok(fs.existsSync(path.join(out, 'plugins', 'index.html')) && !fs.existsSync(path.join(out, 'authors')), 'a catalog front, no author');
 });
 
 test('the fixture catalog builds: recordings, risks and the plain install command', () => {
@@ -198,7 +200,7 @@ test('the fixture catalog builds: recordings, risks and the plain install comman
   assert.equal(hooky.can.agent, 'Speaks for hooky through its hooks');
   assert.ok(!hooky.readme.includes('<script') && !hooky.readme.includes('href="javascript'), hooky.readme);
   assert.deepEqual(bigfiles.kinds, ['badges']);
-  assert.ok(fs.readFileSync(path.join(out, 'app.js'), 'utf8').includes('const install = (p) => `nerd --plugin-add ${p.url}`;'), 'a plain GitHub address, unquoted');
+  assert.ok(fs.readFileSync(path.join(out, 'render.js'), 'utf8').includes('const install = (p) => `nerd --plugin-add ${p.url}`;'), 'a plain GitHub address, unquoted');
 });
 
 test('collections come from what a plugin can do', () => {
@@ -224,10 +226,11 @@ test("an entry's own name field cannot steer where the site writes", () => {
 
 test("a doc's own #anchor stays on its page; another doc's section goes to that page", () => {
   const d = nerdDocs(nerdRepo), guide = d.docs.find((p) => p.slug === 'plugins').html;
-  assert.ok(guide.includes('href="#/docs/plugins#network"'), guide);
-  assert.ok(!guide.includes('#/docs/network'), 'not a page of its own');
-  assert.ok(guide.includes('href="#/docs/quick-start"'), 'a README section is its page, whose heading is the title');
-  assert.ok(d.lede.includes('href="#/docs/plugins#network"'), 'a link into the plugin guide keeps its anchor');
+  assert.ok(guide.includes('href="/docs/plugins/#network"'), guide);
+  assert.ok(!guide.includes('/docs/network/'), 'not a page of its own');
+  assert.ok(guide.includes('href="/docs/quick-start/"'), 'a README section is its page, whose heading is the title');
+  assert.ok(d.lede.includes('href="/docs/plugins/#network"'), 'a link into the plugin guide keeps its anchor');
+  assert.ok(!/nerdterm\.dev/.test(guide + d.lede), 'the site links itself by path');
 });
 
 test('nerd\'s docs build the same site from one README or from a README with docs/ pages', () => {
@@ -244,13 +247,15 @@ test('nerd\'s docs build the same site from one README or from a README with doc
   assert.equal(page('plugins').title, 'Plugins', 'a docs/ page is titled by its own # line');
   // links in docs/ are relative to docs/
   const t = page('troubleshooting').html;
-  assert.ok(t.includes('href="#/docs/usage#keys"') && t.includes('href="#/docs/installation"') && t.includes('href="#/docs/messages-between-agents"'), t);
+  // a section that is a part of Install or Security links there, not to a docs page
+  assert.ok(t.includes('href="/docs/usage/#keys"') && t.includes('href="/install/"') && t.includes('href="/docs/messages-between-agents/"'), t);
   const ps = page('privacy-and-security').html;
-  assert.ok(ps.includes('href="https://github.com/nerdterm/nerd/blob/master/SECURITY.md"') && ps.includes('href="#/docs/isolation"') && ps.includes('href="#/docs/privacy-and-security#what-leaves-nerd"'), ps);
+  assert.ok(ps.includes('href="https://github.com/nerdterm/nerd/blob/master/SECURITY.md"') && ps.includes('href="/docs/isolation/"') && ps.includes('href="/security/#what-leaves-nerd"'), ps);
   const g = page('plugins').html;
-  assert.ok(g.includes('href="https://github.com/nerdterm/nerd/blob/master/templates/plugin/"') && g.includes('href="#/docs/quick-start"') && g.includes('href="#/docs/plugins#network"'), g);
-  assert.ok(split.lede.includes('href="#/docs/privacy-and-security#what-leaves-nerd"') && split.lede.includes('href="#/docs/requirements"'), split.lede);
+  assert.ok(g.includes('href="https://github.com/nerdterm/nerd/blob/master/templates/plugin/"') && g.includes('href="/docs/quick-start/"') && g.includes('href="/docs/plugins/#network"'), g);
+  assert.ok(split.lede.includes('href="/security/#what-leaves-nerd"') && split.lede.includes('href="/install/"'), split.lede);
   assert.equal(split.anchors['how-it-works'], 'privacy-and-security');
+  assert.deepEqual(split.docs.filter((p) => p.part).map((p) => `${p.slug}:${p.part}`), ['installation:install', 'requirements:install', 'limitations:install', 'privacy-and-security:security', 'uninstall:install']);
   assert.deepEqual([page('usage').file, page('quick-start').file, one.docs.find((p) => p.slug === 'plugins').file, one.docs.find((p) => p.slug === 'usage').file], ['docs/usage.md', 'README.md', 'docs/plugins.md', 'README.md'], 'each page knows the file it comes from');
   // the summary of the ways out is nerd's own sentence, whichever page holds "What leaves nerd"
   assert.equal(one.waysOut, 'Each way out starts from something you do, says where it goes before it goes, and writes a line to <code>daemon.log</code>.');
@@ -345,7 +350,7 @@ test("a recording's header carries no markup and no odd size onto the page", () 
     assert.equal(a.cast, null, JSON.stringify(head));
     assert.ok(a.notes.includes('Its recording is not a valid asciicast file, so it is not shown.'), a.notes.join('|'));
     assert.ok(!fs.existsSync(path.join(out, 'casts', 'alpha.cast')));
-    assert.ok(!read(out, 'index.html').includes('evil.example'), 'nothing of the header reaches the page');
+    assert.ok(!page(out, '/plugins/alpha/').includes('evil.example') && !read(out, 'data.js').includes('evil.example'), 'nothing of the header reaches the page');
   }
   fs.writeFileSync(path.join(dir, 'alpha.json'), JSON.stringify({ ...alpha, cast: '{"version":3,"term":{"cols":120,"rows":40}}\n[0.5,"o","hi"]\n' }));
   const out = tmp('cast3');
@@ -453,43 +458,294 @@ test('permissions version by version, maintenance, and the last commit of the fe
   assert.equal(manifestDiff({ version: '1', a: 1 }, { version: '2', a: 1 }), null, 'a version bump alone is no difference');
 });
 
-const read = (out, f) => fs.readFileSync(path.join(out, f), 'utf8');
+const read = (out, ...f) => fs.readFileSync(path.join(out, ...f), 'utf8');
+/** A built page by its address; its main; the words of a piece of markup. */
+const page = (out, p) => read(out, p, 'index.html');
+const main = (h) => h.slice(h.indexOf('<main id="main">') + 16, h.lastIndexOf('</main>'));
+const text = (h) => h.replace(/<[^>]+>/g, '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 
 test('the build has no example plugin, no variation switch and no inline style, and ships what the page loads', () => {
   const { root, dir } = fixtureCatalog();
   const out = tmp('clean');
   build(out, dir, root, { nerdRepo, today: '2026-10-05', nerd: '0.10.0' });
-  const own = ['index.html', 'app.js', 'theme.js', 'space.js', 'style.css'].map((f) => [f, read(out, f)]);
+  const pages = fs.readdirSync(out, { recursive: true }).filter((f) => f.endsWith('.html'));
+  const own = [...pages, 'app.js', 'render.js', 'theme.js', 'space.js', 'style.css'].map((f) => [f, read(out, f)]);
   for (const [f, text] of own) assert.ok(!/data-v\b|example-plugins|example-review|exampleReceipt|makeExamplePlugins/.test(text), `${f} has no variation or example leftovers`);
-  for (const [f, text] of own.filter(([f]) => f !== 'index.html')) assert.ok(!/example/i.test(text), `${f} has no example data`);
-  assert.ok(!own.find(([f]) => f === 'index.html')[1].includes('id="sw"'), 'no switcher');
+  for (const [f, text] of own.filter(([f]) => !f.endsWith('.html'))) assert.ok(!/example/i.test(text), `${f} has no example data`);
+  for (const [f, text] of own) assert.ok(!text.includes('id="sw"') && !/ style="/.test(text), `${f}: no switcher, no style attribute (the policy allows none)`);
   assert.ok(!JSON.parse(read(out, 'catalog.json')).plugins.some((p) => /example/i.test(p.name)), 'no example plugin');
-  assert.ok(!/ style="/.test(read(out, 'app.js') + read(out, 'index.html')), 'the policy allows no style attribute');
-  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml', 'install.sh']) assert.ok(fs.existsSync(path.join(out, f)), f);
-  const app = read(out, 'app.js');
-  assert.match(app, /const THEME_KEY = 'nerd-plugins-theme';/);
-  assert.match(app, /const RECENT_KEY = 'nerd-plugins-recent';/);
-  assert.ok(!/[Ss]upport nerd/.test(app), 'no support block');
+  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml', 'install.sh', 'data.js', 'render.js']) assert.ok(fs.existsSync(path.join(out, f)), f);
+  assert.ok(!fs.existsSync(path.join(out, 'pages.js')) && !fs.existsSync(path.join(out, 'nerd-docs.js')), 'the docs are rendered at build time, not shipped');
+  const render = read(out, 'render.js');
+  assert.match(render, /const THEME_KEY = 'nerd-plugins-theme';/);
+  assert.match(render, /const RECENT_KEY = 'nerd-plugins-recent';/);
+  assert.ok(!/[Ss]upport nerd/.test(render + read(out, 'app.js')), 'no support block');
   for (const f of fs.readdirSync(out, { recursive: true }).filter((f) => /\.(html|js|css|json)$/.test(f) && !f.startsWith('vendor'))) assert.ok(!read(out, f).includes('[owner:'), `${f} has no placeholder`);
   // every plugin can also read other programs' command lines and environments (nerd's docs/plugins.md)
-  for (const f of ['app.js', 'home.js', 'catalog-front.js']) assert.ok(!/may do only what its manifest names/.test(read(out, f)), `${f} does not say a plugin may do only what its manifest names`);
+  for (const f of ['app.js', 'render.js', 'home.js', 'catalog-front.js']) assert.ok(!/may do only what its manifest names/.test(read(out, f)), `${f} does not say a plugin may do only what its manifest names`);
   // nerd denies a fixed list (src/plugins.rs SECRET), not a category: ~/.codex/auth.json and ~/.git-credentials are readable
-  for (const f of ['app.js', 'home.js', 'catalog-front.js']) assert.ok(!/credential folders|keys and credentials/.test(read(out, f)), `${f} names what nerd denies, not "credential folders"`);
-  assert.match(read(out, 'nerd-docs.js'), /"readable":\["~\/\.codex\/auth\.json","~\/\.git-credentials"\]/, 'the pages say another token file is readable');
+  for (const f of ['app.js', 'render.js', 'home.js', 'catalog-front.js']) assert.ok(!/credential folders|keys and credentials/.test(read(out, f)), `${f} names what nerd denies, not "credential folders"`);
+  assert.match(read(out, 'data.js'), /"readable":\["~\/\.codex\/auth\.json","~\/\.git-credentials"\]/, 'the pages say another token file is readable');
+  // the browser's data is what its conveniences read: no README, no rendered docs
+  const w = {}; new Function('window', read(out, 'data.js'))(w);
+  assert.ok(w.NERD_DATA.plugins.length === 3 && w.NERD_DATA.plugins.every((p) => !('readme' in p)) && w.NERD_DOCS.docs.every((d) => !('html' in d)) && !('changelog' in w.NERD_DOCS), 'data.js carries neither READMEs nor the docs\' text');
 });
 
-// ---- the page in a browser: one headless Chrome run drives every scenario, and each test reads its part of the result.
+// ---- the pages as files: what a visitor with no script sees, read straight from the build
+
+/** The fixture catalog as a site with what the page tests need: a recording and a README, two plugins that add previews, one source gone, one tag with markup in it. */
+function uiSite() {
+  const { root, dir } = fixtureCatalog();
+  const cast = '{"version":2,"width":80,"height":24}\n[0.1,"o","hi"]\n';
+  const alpha = JSON.parse(fs.readFileSync(path.join(dir, 'alpha.json'), 'utf8'));
+  fs.writeFileSync(path.join(dir, 'alpha.json'), JSON.stringify({ ...alpha, cast, readme: '# Alpha\n\nAlpha previews database files.' }));
+  fs.writeFileSync(path.join(dir, 'gamma.json'), JSON.stringify(data({ abilities: ['Learns which .log files you select, and reads them'], min_nerd: '0.9.0', manifest: { name: 'gamma', previews: [{ extensions: ['log'] }] } })));
+  fs.rmSync(path.join(dir, 'beta.json'));
+  const beta = JSON.parse(fs.readFileSync(path.join(root, 'plugins', 'beta.json'), 'utf8'));
+  fs.writeFileSync(path.join(root, 'plugins', 'beta.json'), JSON.stringify({ ...beta, tag: '<b>v9</b>' }));
+  const out = tmp('ui');
+  build(out, dir, root, { nerdRepo, today: '2026-10-05', nerd: '0.10.0' });
+  const split = tmp('ui-split');
+  build(split, dir, root, { nerdRepo: nerdSplit, today: '2026-10-05', nerd: '0.10.0' });
+  return { out, split };
+}
+let site;
+const sites = () => (site ??= uiSite());
+
+// the panel of a page: its sections, each row's classes and label
+const tree = (h) => h.slice(h.indexOf('<aside id="tree"'), h.indexOf('</aside>'));
+const sections = (h) => tree(h).split('<div class="sec open">').slice(1).map((s) => ({ h: text(s.match(/<div class="h">(.*?)<\/div>/)[1]), rows: [...s.matchAll(/<a class="tr([^"]*)"[^>]*><span class="g"[^>]*><\/span><span class="l">(.*?)<\/span>(?:<span class="n">(.*?)<\/span>)?<\/a>/g)].map((m) => ({ cls: m[1], l: text(m[2]), n: m[3] ?? null })) }));
+const lit = (h) => sections(h).flatMap((s) => s.rows).filter((r) => / on\b/.test(r.cls)).map((r) => r.l + (r.n ?? ''));
+const navOf = (h) => ({ sections: sections(h).map((s) => s.h), rows: sections(h).flatMap((s) => s.rows.map((r) => r.l)) });
+const hrefs = (h) => [...main(h).matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
+const pagesOf = (out) => fs.readdirSync(out, { recursive: true }).filter((f) => f.endsWith('index.html')).map((f) => '/' + f.slice(0, -'index.html'.length));
+
+test('every page is its own file, complete without a script, with its address, title and description', () => {
+  const { out } = sites();
+  const list = pagesOf(out).sort();
+  assert.deepEqual(list, ['/', '/about/', '/authors/nerdterm/', '/authors/other/', '/authors/someone/', '/changelog/', '/contact/', '/docs/', '/docs/license/', '/docs/messages-between-agents/', '/docs/plugins/', '/docs/quick-start/', '/docs/usage/', '/install/', '/legal/', '/plugins/', '/plugins/add/', '/plugins/all/', '/plugins/alpha/', '/plugins/alpha/related/', '/plugins/alpha/releases/', '/plugins/alpha/review/', '/plugins/beta/', '/plugins/beta/releases/', '/plugins/beta/review/', '/plugins/gamma/', '/plugins/gamma/related/', '/plugins/gamma/releases/', '/plugins/gamma/review/', '/plugins/review/', '/plugins/why/', '/privacy/', '/security/']);
+  const sitemap = [...read(out, 'sitemap.xml').matchAll(/<loc>https:\/\/nerdterm\.dev(\/[^<]*)<\/loc>/g)].map((m) => m[1]).sort();
+  assert.deepEqual(sitemap, list.filter((p) => p !== '/docs/'), 'the sitemap lists every page; /docs/ only opens the first docs page');
+  assert.match(read(out, 'docs', 'index.html'), /<meta http-equiv="refresh" content="0; url=\/docs\/quick-start\/">/);
+  assert.match(read(out, 'robots.txt'), /Sitemap: https:\/\/nerdterm\.dev\/sitemap\.xml/);
+  const titles = new Set();
+  for (const p of sitemap) {
+    const h = page(out, p);
+    const title = h.match(/<title>([^<]*)<\/title>/)?.[1], desc = h.match(/<meta name="description" content="([^"]*)"/)?.[1];
+    assert.ok(title && desc, `${p} has a title and a description`);
+    assert.ok(!titles.has(title), `${p}: ${title} names one page`); titles.add(title);
+    assert.ok(h.includes(`<link rel="canonical" href="https://nerdterm.dev${p}">`) && h.includes(`<meta property="og:url" content="https://nerdterm.dev${p}">`), `${p} names its own address`);
+    assert.ok(h.includes(`<meta property="og:title" content="${title}">`) && h.includes(`<meta property="og:description" content="${desc}">`), `${p}: the same title and description for a link preview`);
+    assert.ok(text(main(h)).length > 60, `${p} has its text in the file: ${text(main(h)).slice(0, 80)}`);
+    assert.ok(/<main id="main"><div class="page|<main id="main"><section class="frame/.test(h), `${p} opens with a frame`);
+    assert.ok(h.includes('id="sVer" href="/changelog/">nerd 0.10.0<'), `${p}: the status line names the version`);
+  }
+  assert.equal(page(out, '/').match(/<title>([^<]*)<\/title>/)[1], 'nerd: a terminal multiplexer that shows what your AI agents are doing');
+  assert.equal(page(out, '/plugins/alpha/').match(/<meta name="description" content="([^"]*)"/)[1], 'S', 'a plugin page is described by its summary');
+  assert.match(page(out, '/docs/usage/').match(/<meta name="description" content="([^"]*)"/)[1], /^After installing a new version, a card says Update available\./, 'a docs page by its first paragraph');
+  // nothing in the build sends a visitor to a hash route, and nothing is a hash route
+  for (const f of fs.readdirSync(out, { recursive: true }).filter((f) => /\.(html|js|css|json|xml|txt)$/.test(f) && !f.startsWith('vendor'))) assert.ok(!read(out, f).includes('#/'), `${f} has no hash route`);
+  const nf = read(out, '404.html');
+  assert.match(text(main(nf)), /This address does not exist\.Nothing is at this address\./);
+  assert.ok(nf.includes('<script src="/app.js?v=') && nf.includes('href="/style.css?v='), 'the not-found page loads the site from its root, wherever it is shown');
+});
+
+test('a plugin named like a page of the site stops the build', () => {
+  const { root, dir } = fixtureCatalog();
+  fs.copyFileSync(path.join(root, 'plugins', 'alpha.json'), path.join(root, 'plugins', 'all.json'));
+  fs.copyFileSync(path.join(dir, 'alpha.json'), path.join(dir, 'all.json'));
+  assert.throws(() => build(tmp('clash'), dir, root, { nerdRepo, today: '2026-10-05', nerd: '0.10.0' }), /a plugin cannot be called all: \/plugins\/all\/ is a page of the site/);
+});
+
+test('every in-site link of every page leads to a page that exists, and to its anchor when it names one', () => {
+  for (const out of Object.values(sites())) {
+    const links = new Set(pagesOf(out).flatMap((p) => hrefs(page(out, p)).filter((h) => h.startsWith('/'))));
+    assert.ok(links.size >= 30, `${links.size} links checked`);
+    const broken = [...links].filter((l) => {
+      const [p, a] = l.split('#');
+      const file = p.endsWith('/') ? path.join(out, p, 'index.html') : path.join(out, p.split('?')[0]);
+      if (!fs.existsSync(file)) return true;
+      return a && !fs.readFileSync(file, 'utf8').includes(`id="${a}"`);
+    });
+    assert.deepEqual(broken, []);
+  }
+});
+
+test('the panel is the whole site map, the same on every page; only the highlight follows the page', () => {
+  const { out } = sites();
+  const home = page(out, '/');
+  assert.deepEqual(navOf(home).sections, ['nerd', 'plugins', 'this site']);
+  assert.deepEqual(sections(home)[0].rows.filter((r) => !/ sub\b/.test(r.cls)).map((r) => r.l), ['Home', 'Install', 'Docs', 'Security', 'Changelog']);
+  assert.deepEqual(sections(home)[0].rows.filter((r) => / sub\b/.test(r.cls)).map((r) => r.l), ['Quick start', 'Usage', 'Plugins', 'Messages between agents', 'License'], 'every README section without a page of its own, and the plugin guide, always listed');
+  assert.deepEqual(sections(home)[2].rows.map((r) => r.l), ['About', 'Contact', 'Privacy', 'Legal']);
+  assert.deepEqual(lit(home), ['Home']);
+  const on = {};
+  for (const p of pagesOf(out).filter((p) => p !== '/docs/')) {
+    const h = page(out, p);
+    assert.deepEqual(navOf(h), navOf(home), `${p}: the same rows on every page`);
+    on[p] = lit(h);
+  }
+  assert.deepEqual(on['/plugins/why/'], ['Why nerd plugins']);
+  assert.deepEqual(on['/plugins/all/'], ['All plugins3']);
+  assert.deepEqual(on['/plugins/review/'], ['How review works']);
+  assert.deepEqual(on['/plugins/add/'], ['Add your plugin']);
+  assert.deepEqual(on['/about/'], ['About']);
+  assert.deepEqual(on['/docs/usage/'], ['Usage']);
+  assert.deepEqual(on['/plugins/alpha/'], ['All plugins3'], 'a plugin lights the list it belongs to');
+  assert.deepEqual(on['/plugins/alpha/review/'], ['All plugins3']);
+  assert.deepEqual(on['/authors/someone/'], ['All plugins3']);
+  assert.deepEqual(on['/install/'], ['Install']);
+  assert.deepEqual(on['/plugins/'], ['Catalog']);
+  assert.equal(sections(home)[0].rows.find((r) => r.l === 'Docs').cls.includes(' on'), false);
+  assert.ok(tree(home).includes('href="/docs/quick-start/"><span class="g" aria-hidden="true"></span><span class="l">Docs</span>'), 'Docs opens the first docs page');
+  assert.ok(tree(home).includes('href="/plugins/all/?adds=previews"'), 'a kind of plugin is the list filtered by it');
+});
+
+test('the home page is nerd drawn as a plan, then its README, and the status line keeps only what it needs', () => {
+  const { out } = sites();
+  const h = page(out, '/'), m = main(h);
+  assert.equal(text(m.match(/<h1>(.*?)<\/h1>/)[1]), 'Shells. Agents. You decide.');
+  assert.deepEqual([...m.matchAll(/<div class="h7d"[^>]*><b>(.*?)<\/b>/g)].map((x) => text(x[1])), ['git', 'ssh', 'a plugin with network', 'pane proxy', 'a link or a file', 'the clipboard', 'Claude Code’s inbox']);
+  assert.deepEqual([...m.matchAll(/<div class="h7d"[^>]*><b>.*?<\/b><code>(.*?)<\/code>/g)].map((x) => text(x[1].replace('<br>', ''))), ['git clone …', 'remote: ssh …', 'plugin … started: network …plugin … proxy: …', 'pane N proxy: …', 'link opened …', 'copied N characters', 'message … via inbox: delivered']);
+  const markers = nerdDocs(nerdRepo).egress.sort();
+  assert.equal(markers.length, 9, 'the fixture README marks every way out nerd has');
+  assert.deepEqual([...m.matchAll(/data-egress="([^"]+)"/g)].map((x) => x[1]).sort(), markers, 'every way out README marks has its room, door or line on the plan');
+  assert.deepEqual([...m.matchAll(/<h2 id="[^"]*" class="h7h">(.*?)<\/h2>/g)].map((x) => text(x[1])), ['Start in a minute', 'What nerd knows about your agents', 'What else is in it', 'Plugins', 'Limits, said plainly']);
+  assert.deepEqual([...m.matchAll(/<tbody><tr><td>(.*?)<\/td>/g)].map((x) => text(x[1])), ['Claude Code'], 'the agents table is the README\'s');
+  assert.ok(m.includes('<ul><li>') && m.includes('<ul class="h7feats"><li>'), 'the README\'s lists are on the page as they are');
+  assert.deepEqual([...h.matchAll(/<footer id="status">(.*?)<\/footer>/gs)].map((x) => text(x[1])), ['nerd 0.10.0GitHub'], 'the theme switch is drawn by the browser');
+  // no block asking for money; the README's "mouse support" is a requirement, not a plea
+  assert.ok(!/support (nerd|us|the project)|donat|sponsor/i.test(text(h)));
+});
+
+test('the catalog front: what plugins are, one plugin\'s sandbox and its doors, then the catalog', () => {
+  const { out } = sites();
+  const m = main(page(out, '/plugins/'));
+  assert.equal(text(m.match(/<h1>(.*?)<\/h1>/)[1]), 'Plugins that show what they may do.');
+  assert.match([...m.matchAll(/<p class="h7fine">(.*?)<\/p>/g)].map((x) => text(x[1])).at(-1), /^3 plugins · 3 authors · \+22 stars this week · open source only$/);
+  assert.deepEqual([...m.matchAll(/<button class="btn" data-pi="\d+"[^>]*>(.*?)<\/button>/g)].map((x) => text(x[1])), ['alpha', 'beta', 'gamma', 'an example with network']);
+  assert.deepEqual([...m.matchAll(/<div class="h7d cf-d( shut)?"[^>]*><b>(.*?)<\/b>/g)].map((x) => `${text(x[2])} ${x[1] ? 'shut' : 'open'}`), ['nerd open', 'your files shut', 'the network open', 'coding agents shut']);
+  assert.deepEqual([...m.matchAll(/<a class="h7row"[^>]*><b>(.*?)<\/b>/g)].map((x) => text(x[1])), ['alpha', 'beta', 'gamma']);
+  assert.equal(text(m.match(/data-k="reads"[^>]*>.*?<div class="h7b">(.*?)<\/div>/s)[1]), "your files, except ~/.ssh, ~/.aws, the shell histories, the whole of ~/Library (keychains, cookies) and nerd's state root (sessions, logs). Any other file in your home folder is readable, token files such as ~/.codex/auth.json and ~/.git-credentials included. Other programs’ command lines and environments are readable too.", 'the reads cell is the fixture guide\'s list');
+  assert.ok(!/support|donat|sponsor/i.test(text(m)));
+});
+
+test('with nerd\'s docs split into docs/ pages, the panel lists them and the pages keep their places', () => {
+  const { split } = sites();
+  assert.deepEqual(sections(page(split, '/install/'))[0].rows.filter((r) => / sub\b/.test(r.cls)).map((r) => r.l), ['Quick start', 'Usage', 'Isolation', 'Messages between agents', 'Plugins', 'Troubleshooting', 'License']);
+  assert.match(text(main(page(split, '/install/')).match(/<section class="frame " id="updating">(.*?)<\/section>/s)[1]), /a card says Update available/, 'Install takes Updating from docs/usage.md, an <h3> there');
+  assert.ok(main(page(split, '/docs/usage/')).includes('href="https://github.com/nerdterm/nerd/edit/master/docs/usage.md"'), 'Edit on GitHub opens the page\'s own file');
+  assert.equal(text(main(page(split, '/security/')).match(/<ul class="plain pg-sum">(?:.*?<li>){3}(.*?)<\/li>/s)[1]), 'Each way out starts from something you do or approved, and writes a line to daemon.log. The list is below.');
+  assert.ok(page(split, '/security/').includes('id="how-it-works"'), 'the old How it works section lives on the Security page');
+  assert.ok(!fs.existsSync(path.join(split, 'docs', 'how-it-works')) && !fs.existsSync(path.join(split, 'docs', 'requirements')), 'no page for a section that is part of another');
+});
+
+test('a docs page is nerd\'s README section', () => {
+  const { out } = sites();
+  const m = main(page(out, '/docs/quick-start/'));
+  assert.equal(text(m.match(/<section class="frame primary"><h2 class="t">(.*?)<\/h2>/)[1]), 'Quick start');
+  assert.match(text(m), /nerd --resume/);
+});
+
+test('a plugin page shows the recording, the four rooms, the README and the Related tab with its count', () => {
+  const { out } = sites();
+  const m = main(page(out, '/plugins/alpha/'));
+  assert.match(m, /<section class="frame rec primary"><h2 class="t">alpha running in nerd<\/h2>/);
+  assert.match(m, /<div id="pl1" data-cast="alpha" data-fp="[0-9a-f]{10}" data-cols="80" data-rows="24"><\/div><div class="ctl">/, 'the player\'s box carries the recording\'s name, size and fingerprint for the browser');
+  assert.match(text(m.match(/<div class="ctl">(.*?)<\/div>/)[1]), /^PauseRestart\d+ s, 80 by 24 cells$/);
+  const rooms = [...m.matchAll(/<div class="rcell ([^"]*)">(.*?)<\/div>/g)].map((x) => [x[1], text(x[2])]);
+  assert.deepEqual(rooms.map(([c]) => c), ['shows on', 'files', 'network on', 'agent']);
+  assert.match(rooms[0][1], /previews/);
+  assert.match(rooms[2][1], /only api\.example\.com on port 443/);
+  assert.match(rooms[1][1], /walled off/);
+  assert.match(text(m.match(/<div class="readme">(.*?)<\/div>/s)[1]), /Alpha previews database files\./);
+  assert.deepEqual([...m.match(/<div class="ptabs">(.*?)<\/div>/)[1].matchAll(/<a href="([^"]*)"[^>]*>(.*?)<\/a>/g)].map((x) => [x[1], text(x[2])]), [['/plugins/alpha/', 'Overview'], ['/plugins/alpha/review/', 'Review'], ['/plugins/alpha/releases/', 'Releases'], ['/plugins/alpha/related/', 'Related 1']]);
+  const cmds = [...m.matchAll(/<div class="cmd"><code>(.*?)<\/code>/g)].map((x) => text(x[1]));
+  assert.equal(cmds[0], 'nerd --plugin-add https://github.com/nerdterm/alpha');
+  assert.equal(cmds[1], 'git ls-remote https://github.com/nerdterm/alpha refs/tags/v1.1.0', 'the command that shows the tag is the commit');
+  assert.deepEqual([...m.matchAll(/data-tip="(Official[^"]*)"/g)].map((x) => x[1]), ['Official: published by the nerd project']);
+  assert.ok(m.includes('<h3 class="sect">Official: published by the nerd project</h3>'));
+  assert.ok(m.includes('href="/authors/nerdterm/"'), 'the author links to the author page');
+  assert.deepEqual([...main(page(out, '/plugins/alpha/related/')).matchAll(/<a class="rel-i"[^>]*><span class="nm">(.*?)<\/span>/g)].map((x) => text(x[1])), ['gamma']);
+  assert.ok(!fs.existsSync(path.join(out, 'plugins', 'alpha', 'overview')), 'the overview is the plugin\'s own address');
+  assert.ok(main(page(out, '/plugins/gamma/')).includes('class="noshot big snap4"'), 'no recording: the sketch, which app.js shapes');
+});
+
+test('the Review tab shows each release as the catalog has it and invents no checks', () => {
+  const { out } = sites();
+  const info = main(page(out, '/plugins/alpha/review/')).match(/<section class="frame fill info">.*?<div class="body">(.*?)<\/div><\/section>/s)[1];
+  const t = text(info);
+  assert.match(t, /v1\.1\.0 reviewed/);
+  assert.ok(t.includes('bbbbbbbbbb') && t.includes('20 September 2026'), t);
+  assert.deepEqual([...info.matchAll(/<dt>(.*?)<\/dt>/g)].map((x) => x[1]), ['commit', 'in the catalog', 'review', 'pull request']);
+  const links = [...info.matchAll(/href="([^"]*)"/g)].map((x) => x[1]);
+  assert.ok(links.includes('https://github.com/nerdterm/alpha/commit/' + B));
+  assert.ok(links.includes('https://github.com/nerdterm/nerd-plugins/pull/7'), 'the catalog pull request, when the history names one');
+  assert.ok(links.includes('/plugins/alpha/review/?r=v1.0.0'), 'another release is the same page with its tag in the query');
+  assert.match(t, /The full receipt of each check will appear here once the review publishes it\./);
+  assert.ok(!/example|OSV|GuardDog|YARA|Gitleaks|lockfile|sandbox trial|sample/i.test(t) && !/class="(rcpt|rc)"/.test(info), t);
+  assert.match(info, /<a class="btn" href="\/plugins\/alpha\/review\/\?r=v1\.1\.0" aria-pressed="true">/);
+  assert.match(text(main(page(out, '/plugins/alpha/releases/'))), /What each release may do, version by version/);
+});
+
+test('revoked and unavailable plugins say so, and an author’s markup stays text', () => {
+  const { out } = sites();
+  const notices = (p) => [...main(page(out, p)).matchAll(/<p class="notice [^"]*">(.*?)<\/p>/g)].map((x) => x[1]);
+  assert.ok(notices('/plugins/gamma/').some((n) => /Revoked\.<\/b> The catalog revoked v1\.0\.0 on 3 October: it read files outside the tree\. nerd will not run it\. Do not install it\./.test(n)), notices('/plugins/gamma/').join('|'));
+  const beta = notices('/plugins/beta/');
+  assert.ok(beta.some((n) => /^<b>Revoked\.<\/b> The catalog warns about &lt;b&gt;v9&lt;\/b&gt; on 3 October: it logs a token\. nerd warns whoever has it\.$/.test(n)), beta.join('|'));
+  assert.ok(beta.some((n) => /^<b>Source unavailable at build time\.<\/b>/.test(n)));
+  const b = main(page(out, '/plugins/beta/'));
+  assert.ok(b.includes('&lt;b&gt;v9&lt;/b&gt;') && !b.includes('<b>v9</b>'), 'a tag is escaped');
+  assert.match(text(b.match(/<section class="frame rooms-f">(.*?)<\/section>/s)[1]), /could not be read at build time\. It is unknown, not none\./);
+  assert.match(text(main(page(out, '/plugins/all/')).match(/<a class="lr" href="\/plugins\/beta\/">(.*?)<\/a>/)[1]), /Writes files, details unknown/);
+});
+
+test('each site page holds its text and no placeholder', () => {
+  const { out } = sites();
+  const pages = {};
+  for (const [k, p] of [['why', '/plugins/why/'], ['about', '/about/'], ['contact', '/contact/'], ['privacy', '/privacy/'], ['legal', '/legal/']]) {
+    const m = main(page(out, p));
+    pages[k] = { title: text(m.match(/<h2 class="t">(.*?)<\/h2>/)[1]), text: text(m.match(/<div class="prose">(.*?)<\/div><\/section>/s)[1]), hrefs: hrefs(page(out, p)), cells: (m.match(/<div class="cell">/g) || []).length };
+    assert.ok(pages[k].text.length > 200, `${k} has text`);
+    assert.ok(!pages[k].text.includes('[owner:') && !m.includes('class="ph"'), k);
+    assert.ok(!/support nerd|donat/i.test(pages[k].text), k);
+    assert.ok(!/\b(best|leading|revolutionary|world-class)\b/i.test(pages[k].text), `${k}: no slogans`);
+  }
+  assert.equal(pages.why.title, 'why nerd plugins');
+  assert.equal(pages.why.cells, 4, 'four blocks');
+  assert.match(pages.why.text, /your files except those the plugin guide names: ~\/\.ssh, ~\/\.aws, the shell histories, the whole of ~\/Library \(keychains, cookies\) and nerd's state root \(sessions, logs\)\. Any other file in your home folder is readable, token files such as ~\/\.codex\/auth\.json and ~\/\.git-credentials included\./);
+  assert.match(pages.about.text, /terminal multiplexer for AI agents on macOS/);
+  assert.match(pages.about.text, /No accounts\. No cookies\. No analytics and no download counts\. nerd reads the catalog only when you choose Refresh catalog\./);
+  assert.ok(pages.about.hrefs.includes('https://github.com/nerdterm/nerd') && pages.about.hrefs.includes('https://github.com/nerdterm/nerd-plugins') && pages.about.hrefs.includes('/catalog.json'));
+  assert.ok(pages.contact.hrefs.includes('https://github.com/nerdterm/nerd/blob/master/SECURITY.md'));
+  assert.ok(pages.contact.hrefs.some((h) => h.startsWith('https://github.com/nerdterm/nerd-plugins/issues')));
+  for (const key of ['nerd-plugins-theme', 'nerd-plugins-recent']) assert.ok(pages.privacy.text.includes(key), key);
+  assert.match(pages.privacy.text, /sets no cookies/);
+  assert.match(pages.privacy.text, /hosted on GitHub Pages\. GitHub logs visitors’ IP addresses for security and operations/);
+  assert.ok(pages.privacy.hrefs.includes('https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement'));
+  assert.match(pages.about.text, /made by Evgeniy Kovrov \(github\.com\/nyxene\), a private person, as a personal, non-commercial open-source project; no money is taken\./);
+  assert.match(pages.contact.text, /There is no e-mail address\./);
+  assert.ok(pages.contact.hrefs.includes('https://github.com/nerdterm/nerd/issues'));
+  assert.match(pages.legal.text, /Evgeniy Kovrov \(github\.com\/nyxene\), a private person\./);
+  assert.match(pages.legal.text, /“nerd” and its logo are the project’s names\. Other names belong to their owners\./);
+  assert.ok(!/imprint/i.test(pages.legal.text), 'no imprint');
+  assert.ok(pages.legal.hrefs.includes('https://github.com/nerdterm/nerd-plugins/blob/main/LICENSE'));
+});
+
+// ---- the pages in a browser: one headless Chrome run drives every scenario that needs a script, and each test reads its part of the result.
 
 const CHROME = [process.env.CHROME, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((c) => c && fs.existsSync(c));
 
 const DRIVE = String.raw`<!doctype html><meta charset="utf-8"><body><script>
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function open(hash, w, h, base) {
+async function open(url, w, h) {
   document.querySelectorAll('iframe').forEach((x) => x.remove());
   const f = document.createElement('iframe');
   f.style.cssText = 'width:' + (w || 1440) + 'px;height:' + (h || 900) + 'px;border:0;display:block';
   document.body.append(f);
-  f.src = (base || '') + 'index.html?theme=dark' + hash;
+  const i = url.indexOf('#'), p = i < 0 ? url : url.slice(0, i), a = i < 0 ? '' : url.slice(i);
+  f.src = p + (p.includes('?') ? '&' : '?') + 'theme=dark' + a;
   await new Promise((r) => (f.onload = r));
   for (let i = 0; i < 100 && !f.contentDocument.querySelector('#main .frame'); i++) await sleep(100);
   await sleep(300);
@@ -499,47 +755,21 @@ const txt = (e) => (e ? e.textContent.replace(/\s+/g, ' ').trim() : null);
 const all = (D, s) => [...D.querySelectorAll(s)];
 const rect = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
 const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key: k, bubbles: true }));
+// the page's address without the theme the scenarios open it with
+const at = (W) => { const q = new URLSearchParams(W.location.search); q.delete('theme'); return W.location.pathname + (q.toString() ? '?' + q : '') + W.location.hash; };
 (async () => {
   const R = {};
   try {
-    let { W, D } = await open('#/');
-    const navOf = () => ({
-      sections: all(D, '#tree .sec > .h').map(txt),
-      rows: all(D, '#tree .tr .l').map(txt),
-    });
-    R.home = {
-      ...navOf(),
-      top: all(D, '#tree .sec:first-child .tr:not(.sub) .l').map(txt),
-      docs: all(D, '#tree .sec:first-child .tr.sub .l').map(txt),
-      on: all(D, '#tree .tr.on').map(txt),
-      aboutRows: all(D, '#tree .sec').filter((x) => x.textContent.includes('this site')).flatMap((x) => all(x, '.tr .l')).map(txt),
-      title: txt(D.querySelector('#main h1')),
-      doors: all(D, '.h7d b').map(txt),
-      logs: all(D, '.h7d code').map(txt),
-      egress: all(D, '[data-egress]').map((e) => e.dataset.egress).sort(),
-      markers: [...W.NERD_DOCS.egress].sort(),
-      sections2: all(D, '.h7s .h7h').map(txt),
-      agents: all(D, '.h7 table tbody td:first-child').map(txt),
-      status: all(D, '#status > *').map(txt),
-      text: txt(D.body),
-      theme: all(D, '#status .theme button').map(txt),
-    };
+    let { W, D } = await open('/');
+    R.home = { theme: all(D, '#status .theme button').map(txt), errors: [] };
     all(D, '.h7d')[0].click(); await sleep(100);
     R.home.flow = { lit: all(D, '.h7flow path.h7on').map((p) => p.dataset.f), cap: txt(D.getElementById('h7cap')) };
-    ({ W, D } = await open('#/plugins'));
-    R.front = {
-      title: txt(D.querySelector('#main h1')),
-      facts: all(D, '.h7fine').map(txt),
-      pick: all(D, '.cf-pick .btn').map(txt),
-      doors: all(D, '.cf-d').map((d) => txt(d.querySelector('b')) + (d.classList.contains('shut') ? ' shut' : ' open')),
-      rows: all(D, '.h7row > b').map(txt),
-      reads: txt(D.querySelector('[data-k="reads"] .h7b')),
-      text: txt(D.body),
-    };
+    ({ W, D } = await open('/plugins/'));
+    R.front = { doors: all(D, '.cf-d').map((d) => txt(d.querySelector('b')) + (d.classList.contains('shut') ? ' shut' : ' open')) };
     all(D, '.cf-pick .btn')[1].click(); await sleep(100);
     R.front.second = all(D, '.cf-d').map((d) => txt(d.querySelector('b')) + (d.classList.contains('shut') ? ' shut' : ' open'));
     // scrolled panes: nothing of what scrolls may show in the band under a frame's top border, where its title sits
-    ({ W, D } = await open('#/plugins', 1440, 420));
+    ({ W, D } = await open('/plugins/', 1440, 420));
     R.bleed = all(D, '.frame > .body, .home-pane > .home').filter((s) => !s.parentElement.parentElement.closest('.frame') && W.getComputedStyle(s).overflowY !== 'visible' && s.scrollHeight > s.clientHeight + 40).map((s) => {
       s.scrollTop = 120;
       const f = s.parentElement.getBoundingClientRect(), hits = new Set();
@@ -554,48 +784,26 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
       e.focus();
       return Math.round(e.getBoundingClientRect().top - s.getBoundingClientRect().top);
     });
-    // every in-site link of every doc page leads to a page that renders, and to its anchor when it names one
-    const linkCheck = async (base) => {
-      ({ W, D } = await open('#/docs/quick-start', 1440, 900, base));
-      const docPages = [...W.NERD_API.DOCNAV.map((d) => '#/docs/' + d.slug), '#/install', '#/security', '#/changelog'];
-      const links = new Set();
-      for (const pg of docPages) {
-        W.location.hash = pg; await sleep(150);
-        all(D, '#main a[href^="#/"]').forEach((a) => links.add(a.getAttribute('href')));
-      }
-      const out = { count: links.size, broken: [] };
-      for (const l of links) {
-        W.location.hash = l; await sleep(150);
-        const anchor = l.slice(1).split('#')[1];
-        const missing = D.querySelector('#main .empty h3') || !D.querySelector('#main .frame');
-        if (missing || (anchor && !D.querySelector('#main [id="' + anchor + '"]'))) out.broken.push(l);
-      }
-      return out;
-    };
-    R.links = await linkCheck('');
-    R.split = { links: await linkCheck('split/') };
-    ({ W, D } = await open('#/install', 1440, 900, 'split/'));
-    R.split.nav = all(D, '#tree .sec:first-child .tr.sub .l').map(txt);
-    R.split.updating = txt(D.querySelector('#updating .body'));
-    ({ W, D } = await open('#/docs/usage', 1440, 900, 'split/'));
-    R.split.edit = D.querySelector('.pg-edit a').getAttribute('href');
-    ({ W, D } = await open('#/security', 1440, 900, 'split/'));
-    R.split.waysOut = txt(D.querySelector('.pg-sum li:nth-child(3)'));
-    ({ W, D } = await open('#/docs/how-it-works', 1440, 900, 'split/'));
-    R.split.howItWorks = [W.document.documentElement.dataset.route, !!D.querySelector('#main [id="how-it-works"]')];
-    ({ W, D } = await open('#/docs/quick-start'));
-    R.docs = { title: txt(D.querySelector('#main .frame > .t')), text: txt(D.querySelector('#main')) };
-    R.lit = {};
-    for (const h of ['#/plugins/why', '#/plugins/all', '#/plugins/review', '#/plugins/add', '#/plugins/all?adds=previews', '#/about', '#/docs/usage', '#/plugin/alpha', '#/install']) {
-      ({ W, D } = await open(h));
-      R.lit[h] = { on: all(D, '#tree .tr.on').map(txt), nav: navOf() };
-    }
-    ({ W, D } = await open('#/'));
+    // a hash route from the site's first weeks lands on its page
+    ({ W, D } = await open('/#/plugin/alpha/review?r=v1.0.0#x'));
+    R.legacy = [at(W)];
+    ({ W, D } = await open('/#/plugins/all?adds=previews'));
+    R.legacy.push(at(W));
+    // the query string is the browser's: the list with a filter, a review tab with a release
+    ({ W, D } = await open('/plugins/all/?adds=previews'));
+    R.live = { on: all(D, '#tree .tr.on').map(txt), rows: all(D, '#results a.lr .nm').map(txt), set: all(D, '.fbar .dd.set summary').map(txt) };
+    ({ W, D } = await open('/plugins/all/?sort=constructor'));
+    R.live.sort = [txt(D.querySelector('.srt summary b')), all(D, '#results a.lr').length];
+    ({ W, D } = await open('/plugins/alpha/review/?r=v1.0.0'));
+    R.live.review = { pressed: txt(D.querySelector('.relsel [aria-pressed=true]')), text: txt(D.querySelector('.info .body')), readme: txt(D.querySelector('.readme')) };
+    ({ W, D } = await open('/plugins/gamma/'));
+    ({ W, D } = await open('/'));
     const input = D.getElementById('tqIn');
     input.dispatchEvent(new W.FocusEvent('focusin', { bubbles: true }));
+    R.search = { recent: all(D, '#tqList .gh').map(txt), first: [txt(D.querySelector('#tqList .it .l')), D.querySelector('#tqList .it').getAttribute('href')] };
     input.value = 'alp';
     input.dispatchEvent(new W.Event('input', { bubbles: true }));
-    R.search = { open: D.getElementById('tq').classList.contains('on'), shown: !D.getElementById('tqList').hidden, items: all(D, '#tqList .it .l').map(txt) };
+    Object.assign(R.search, { open: D.getElementById('tq').classList.contains('on'), shown: !D.getElementById('tqList').hidden, items: all(D, '#tqList .it').map((a) => [txt(a.querySelector('.l')), a.getAttribute('href')]) });
     key(W, input, 'Escape');
     R.search.closed = !D.getElementById('tq').classList.contains('on') && D.getElementById('tqList').hidden;
     input.dispatchEvent(new W.FocusEvent('focusin', { bubbles: true }));
@@ -603,20 +811,23 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
     input.dispatchEvent(new W.Event('input', { bubbles: true }));
     R.search.docs = all(D, '#tqList .it').map((a) => [txt(a.querySelector('.l')), a.getAttribute('href')]);
     key(W, input, 'Escape');
-    ({ W, D } = await open('#/plugins/all'));
+    input.dispatchEvent(new W.FocusEvent('focusin', { bubbles: true }));
+    input.value = 'requirements';
+    input.dispatchEvent(new W.Event('input', { bubbles: true }));
+    R.search.part = all(D, '#tqList .it').map((a) => [txt(a.querySelector('.l')), a.getAttribute('href')]);
+    key(W, input, 'Escape');
+    ({ W, D } = await open('/plugins/all/'));
     const dds = all(D, '.fbar .dd');
     dds[0].querySelector('summary').click(); await sleep(150);
     R.menus = { first: all(D, '.dd[open]').length };
     dds[1].querySelector('summary').click(); await sleep(150);
     R.menus.second = all(D, '.dd[open]').map((d) => dds.indexOf(d));
     R.rows = all(D, '#results a.lr').map(txt);
-    ({ W, D } = await open('#/plugin/alpha'));
-    R.plugin = {
-      rec: !!D.querySelector('.frame.rec'), player: !!D.querySelector('.rec [id^=pl]'), ctl: txt(D.querySelector('.rec .ctl')),
-      rooms: all(D, '.rband .rcell').map((c) => [c.className, txt(c)]), readme: txt(D.querySelector('.readme')),
-      tabs: all(D, '.ptabs a').map(txt), install: txt(D.querySelector('.info .cmd code')),
-      mark: all(D, '.off').map((n) => n.getAttribute('data-tip')), official: all(D, '.sect').map(txt).filter((t) => t.startsWith('Official')), check: all(D, '.info .cmd code').map(txt)[1],
-    };
+    const fq = D.getElementById('fq');
+    fq.value = 'gam'; fq.dispatchEvent(new W.Event('input', { bubbles: true })); await sleep(100);
+    R.typed = { rows: all(D, '#results a.lr .nm').map(txt), url: at(W) };
+    ({ W, D } = await open('/plugins/alpha/'));
+    R.plugin = { player: !!D.querySelector('.rec .ap-player') };
     const pause = D.querySelector('.rec [data-act=toggle]');
     pause.click(); await sleep(500);
     R.plugin.toggle = [txt(pause)];
@@ -625,54 +836,24 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
     R.plugin.gap = Math.round(D.querySelector('.rec .ap-player').getBoundingClientRect().height - D.querySelector('.rec .ap-term').getBoundingClientRect().height);
     R.plugin.clipped = {};
     for (const w of [320, 1024, 1280]) {
-      const { D: d } = await open('#/plugin/alpha', w);
+      const { D: d } = await open('/plugins/alpha/', w);
       R.plugin.clipped[w] = all(d, '.rband .rn').filter((e) => e.scrollWidth > e.clientWidth).map(txt);
     }
-    ({ W, D } = await open('#/plugin/alpha'));
-    W.location.hash = '#/plugin/alpha/related'; await sleep(300);
-    R.plugin.related = all(D, '.rel-i .nm').map(txt);
-    ({ W, D } = await open('#/plugin/alpha/review'));
-    R.review = { text: txt(D.querySelector('.info .body')), hrefs: all(D, '.info .body a').map((a) => a.getAttribute('href')), terms: all(D, '.info dt').map(txt), receipts: !!D.querySelector('.rcpt, .rc'), pressed: txt(D.querySelector('.relsel [aria-pressed=true]')) };
-    W.location.hash = '#/plugin/alpha/review?r=v1.0.0'; await sleep(300);
-    R.review.old = { pressed: txt(D.querySelector('.relsel [aria-pressed=true]')), text: txt(D.querySelector('.info .body')) };
-    ({ W, D } = await open('#/plugin/beta'));
-    R.beta = { html: D.querySelector('.info').innerHTML, bold: all(D, '#main b').map(txt), notices: all(D, '.notice').map(txt), rooms: txt(D.querySelector('.rooms-f')) };
-    ({ W, D } = await open('#/plugin/gamma'));
-    R.gamma = { notices: all(D, '.notice').map(txt), offGrid: {} };
+    R.gamma = { offGrid: {} };
     // gamma has no recording: the sketch in its place keeps everything under it on whole pixels (DESIGN.md §2.5)
     for (const w of [390, 1440]) {
-      const { D: d } = await open('#/plugin/gamma', w);
+      const { D: d } = await open('/plugins/gamma/', w);
       R.gamma.offGrid[w] = all(d, '.frame, .rband, .cmd, .btn').filter((e) => e.offsetParent && Math.abs(e.getBoundingClientRect().top % 1) > 0.02).map((e) => e.className);
+      R.gamma.bands = all(d, '.noshot .gl i').filter((i) => i.style.clipPath).length;
     }
-    ({ W, D } = await open('#/plugins/all'));
-    R.unknown = all(D, '#results a.lr').map(txt).find((t) => t.startsWith('beta'));
-    R.pages = {};
-    for (const k of ['why', 'about', 'contact', 'privacy', 'legal']) {
-      ({ W, D } = await open(k === 'why' ? '#/plugins/why' : '#/' + k));
-      R.pages[k] = { title: txt(D.querySelector('#main .frame > .t')), text: txt(D.querySelector('#main .prose')), ph: all(D, '#main .ph').map(txt), hrefs: all(D, '#main a').map((a) => a.getAttribute('href')), cells: all(D, '#main .cell').length };
-    }
-    ({ W, D } = await open('#/'));
-    R.recent = { nav: navOf() };
-    R.odd = {};
-    for (const h of ['#/__proto__', '#/constructor', '#/plugin/%E0%A4%A', '#/docs/__proto__']) {
-      ({ W, D } = await open(h));
-      R.odd[h] = txt(D.querySelector('#main .frame'));
-    }
-    ({ W, D } = await open('#/plugins/all?sort=constructor'));
-    R.odd.sort = [txt(D.querySelector('.srt summary b')), all(D, '#results a.lr').length];
-    ({ W, D } = await open('#/'));
-    const box = D.getElementById('tqIn');
-    box.dispatchEvent(new W.FocusEvent('focusin', { bubbles: true }));
-    R.recent.search = all(D, '#tqList .gh').map(txt);
-    R.recent.first = txt(D.querySelector('#tqList .it .l'));
-    ({ W, D } = await open('#/', 390, 844));
+    ({ W, D } = await open('/', 390, 844));
     const bar = rect(D.getElementById('bar')), brand = rect(D.querySelector('.brand')), menu = rect(D.getElementById('drawerBtn')), field = rect(D.querySelector('.tqf'));
     R.phone = { bar, brand, menu, field, get: D.getElementById('getBtn'), theme: rect(D.querySelector('#status .theme')), vh: W.innerHeight, scrollW: D.documentElement.scrollWidth };
     D.getElementById('drawerBtn').click(); await sleep(200);
     R.phone.drawer = { shown: W.getComputedStyle(D.getElementById('tree')).display, foot: all(D, '#tree .sec').filter((x) => x.textContent.includes('this site')).flatMap((x) => all(x, '.tr .l')).map(txt), pressed: D.getElementById('drawerBtn').getAttribute('aria-expanded') };
-    ({ W, D } = await open('#/', 320, 700));
+    ({ W, D } = await open('/', 320, 700));
     R.narrow = { scrollW: D.documentElement.scrollWidth, brand: rect(D.querySelector('.brand')), menu: rect(D.getElementById('drawerBtn')) };
-    ({ W, D } = await open('#/'));
+    ({ W, D } = await open('/'));
     all(D, '#status .theme button')[1].click(); await sleep(100);
     R.theme = { attr: D.documentElement.dataset.theme, pref: D.documentElement.dataset.pref, saved: W.localStorage.getItem('nerd-plugins-theme'), on: all(D, '#status .theme button.on').map(txt) };
   } catch (e) {
@@ -682,31 +863,17 @@ const key = (W, el, k) => el.dispatchEvent(new W.KeyboardEvent('keydown', { key:
 })();
 </script>`;
 
-/** The fixture catalog as a site with what the browser tests need: a recording and a README, two plugins that add previews, one source gone, one tag with markup in it. */
-function uiSite() {
-  const { root, dir } = fixtureCatalog();
-  const cast = '{"version":2,"width":80,"height":24}\n[0.1,"o","hi"]\n';
-  const alpha = JSON.parse(fs.readFileSync(path.join(dir, 'alpha.json'), 'utf8'));
-  fs.writeFileSync(path.join(dir, 'alpha.json'), JSON.stringify({ ...alpha, cast, readme: '# Alpha\n\nAlpha previews database files.' }));
-  fs.writeFileSync(path.join(dir, 'gamma.json'), JSON.stringify(data({ abilities: ['Learns which .log files you select, and reads them'], min_nerd: '0.9.0', manifest: { name: 'gamma', previews: [{ extensions: ['log'] }] } })));
-  fs.rmSync(path.join(dir, 'beta.json'));
-  const beta = JSON.parse(fs.readFileSync(path.join(root, 'plugins', 'beta.json'), 'utf8'));
-  fs.writeFileSync(path.join(root, 'plugins', 'beta.json'), JSON.stringify({ ...beta, tag: '<b>v9</b>' }));
-  const out = tmp('ui');
-  build(out, dir, root, { nerdRepo, today: '2026-10-05', nerd: '0.10.0' });
-  build(path.join(out, 'split'), dir, root, { nerdRepo: nerdSplit, today: '2026-10-05', nerd: '0.10.0' });
-  fs.writeFileSync(path.join(out, 'drive.html'), DRIVE);
-  return out;
-}
-
 let driven;
 /** Serves the site on a free port, opens drive.html in headless Chrome over its DevTools socket, and resolves with what the scenarios wrote. */
 function drive() {
   driven ??= (async () => {
-    const out = uiSite();
+    const { out } = sites();
+    fs.writeFileSync(path.join(out, 'drive.html'), DRIVE);
+    // as GitHub Pages serves it: a folder by its index.html, anything else by 404.html
     const server = http.createServer((req, res) => {
-      const f = path.join(out, decodeURIComponent(new URL(req.url, 'http://x').pathname));
-      if (!f.startsWith(out) || !fs.existsSync(f) || !fs.statSync(f).isFile()) return res.writeHead(404).end();
+      let f = path.join(out, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+      if (f.startsWith(out) && fs.existsSync(f) && fs.statSync(f).isDirectory()) f = path.join(f, 'index.html');
+      if (!f.startsWith(out) || !fs.existsSync(f) || !fs.statSync(f).isFile()) return res.writeHead(404, { 'content-type': 'text/html' }).end(fs.readFileSync(path.join(out, '404.html')));
       const type = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.wasm': 'application/wasm' }[path.extname(f)] ?? 'text/plain';
       res.writeHead(200, { 'content-type': type }).end(fs.readFileSync(f));
     });
@@ -752,80 +919,35 @@ const ui = (name, fn) => test(name, { skip: !CHROME && 'no Chrome found (set CHR
   fn(r);
 });
 
-ui('the panel is the whole site map, the same on every page; only the highlight follows the page', (r) => {
-  assert.deepEqual(r.home.sections, ['nerd', 'plugins', 'this site']);
-  assert.deepEqual(r.home.top, ['Home', 'Install', 'Docs', 'Security', 'Changelog']);
-  assert.deepEqual(r.home.docs, ['Quick start', 'Usage', 'Plugins', 'Messages between agents', 'License'], 'every README section without a page of its own, and the plugin guide, always listed');
-  assert.deepEqual(r.home.on, ['Home']);
+ui('the plans come alive: a door shows its path, another plugin redraws its sandbox', (r) => {
   assert.deepEqual(r.home.theme, ['System', 'Light', 'Dark'], 'the theme switch sits in the status line');
-  assert.deepEqual(r.home.aboutRows, ['About', 'Contact', 'Privacy', 'Legal']);
-  for (const [h, l] of Object.entries(r.lit)) assert.deepEqual(l.nav, { sections: r.home.sections, rows: r.home.rows }, `${h}: the same rows on every page`);
-  assert.deepEqual(r.lit['#/plugins/why'].on, ['Why nerd plugins']);
-  assert.deepEqual(r.lit['#/plugins/all'].on, ['All plugins3']);
-  assert.deepEqual(r.lit['#/plugins/review'].on, ['How review works']);
-  assert.deepEqual(r.lit['#/plugins/add'].on, ['Add your plugin']);
-  assert.deepEqual(r.lit['#/plugins/all?adds=previews'].on, ['previews2']);
-  assert.deepEqual(r.lit['#/about'].on, ['About']);
-  assert.deepEqual(r.lit['#/docs/usage'].on, ['Usage']);
-  assert.deepEqual(r.lit['#/plugin/alpha'].on, ['All plugins3'], 'a plugin lights the list it belongs to');
-  assert.deepEqual(r.lit['#/install'].on, ['Install']);
-  assert.deepEqual(r.recent.nav, { sections: r.home.sections, rows: r.home.rows }, 'a plugin you opened does not change the panel');
-  assert.deepEqual([r.recent.search[0], r.recent.first], ['recently viewed', 'gamma'], 'the plugin opened last is first in the empty search field');
-});
-
-ui('the home page is nerd drawn as a plan, then its README, and the status line keeps only what it needs', (r) => {
-  assert.equal(r.home.title, 'Shells. Agents. You decide.');
-  assert.deepEqual(r.home.doors, ['git', 'ssh', 'a plugin with network', 'pane proxy', 'a link or a file', 'the clipboard', 'Claude Code’s inbox']);
-  assert.deepEqual(r.home.logs, ['git clone …', 'remote: ssh …', 'plugin … started: network …plugin … proxy: …', 'pane N proxy: …', 'link opened …', 'copied N characters', 'message … via inbox: delivered']);
-  assert.equal(r.home.markers.length, 9, 'the fixture README marks every way out nerd has');
-  assert.deepEqual(r.home.egress, r.home.markers, 'every way out README marks has its room, door or line on the plan');
   assert.deepEqual(r.home.flow.lit, ['git'], 'a door shows its own path');
   assert.match(r.home.flow.cap, /your own process, outside the server’s sandbox/);
-  assert.deepEqual(r.home.sections2, ['Start in a minute', 'What nerd knows about your agents', 'What else is in it', 'Plugins', 'Limits, said plainly']);
-  assert.deepEqual(r.home.agents, ['Claude Code'], 'the agents table is the README\'s');
-  assert.deepEqual(r.home.status, ['nerd 0.10.0', 'GitHub', 'SystemLightDark']);
-  // no block asking for money; the README's "mouse support" is a requirement, not a plea
-  assert.ok(!/support (nerd|us|the project)|donat|sponsor/i.test(r.home.text));
-});
-
-ui('the catalog front: what plugins are, one plugin\'s sandbox and its doors, then the catalog', (r) => {
-  assert.equal(r.front.title, 'Plugins that show what they may do.');
-  assert.match(r.front.facts.at(-1), /^3 plugins · 3 authors · \+22 stars this week · open source only$/);
-  assert.deepEqual(r.front.pick, ['alpha', 'beta', 'gamma', 'an example with network']);
   assert.deepEqual(r.front.doors, ['nerd open', 'your files shut', 'the network open', 'coding agents shut']);
-  assert.deepEqual(r.front.rows, ['alpha', 'beta', 'gamma']);
-  assert.equal(r.front.reads, "your files, except ~/.ssh, ~/.aws, the shell histories, the whole of ~/Library (keychains, cookies) and nerd's state root (sessions, logs). Any other file in your home folder is readable, token files such as ~/.codex/auth.json and ~/.git-credentials included. Other programs’ command lines and environments are readable too.", 'the reads cell is the fixture guide\'s list');
   assert.ok(r.front.second.length === 4 && r.front.second[0] === 'nerd open', 'another plugin redraws the plan');
-  assert.ok(!/support|donat|sponsor/i.test(r.front.text));
   assert.deepEqual(r.bleed, ['nav: clean', 'plugins: clean'], 'nothing scrolls over a frame\'s top border');
   assert.ok(r.focusTop.every((t) => t >= 15), `a focused row or button lands clear of the clipped band: ${r.focusTop} px below the pane's top`);
 });
 
-ui('every in-site link on the doc pages leads somewhere that exists', (r) => {
-  assert.ok(r.links.count >= 3, `${r.links.count} links checked`);
-  assert.deepEqual(r.links.broken, []);
-  assert.ok(r.split.links.count >= 8, `split layout: ${r.split.links.count} links checked`);
-  assert.deepEqual(r.split.links.broken, [], 'split layout');
-});
-
-ui('with nerd\'s docs split into docs/ pages, the panel lists them and the pages keep their places', (r) => {
-  assert.deepEqual(r.split.nav, ['Quick start', 'Usage', 'Isolation', 'Messages between agents', 'Plugins', 'Troubleshooting', 'License']);
-  assert.match(r.split.updating, /a card says Update available/, 'Install takes Updating from docs/usage.md, an <h3> there');
-  assert.deepEqual(r.split.howItWorks, ['security', true], 'the old address of How it works opens the page that holds it');
-  assert.equal(r.split.edit, 'https://github.com/nerdterm/nerd/edit/master/docs/usage.md', 'Edit on GitHub opens the page\'s own file');
-  assert.equal(r.split.waysOut, 'Each way out starts from something you do or approved, and writes a line to daemon.log. The list is below.');
-});
-
-ui('a docs page is nerd\'s README section', (r) => {
-  assert.equal(r.docs.title, 'Quick start');
-  assert.match(r.docs.text, /nerd --resume/);
+ui('a hash route from the first weeks lands on its page, and the query string is drawn by the browser', (r) => {
+  assert.deepEqual(r.legacy, ['/plugins/alpha/review/?r=v1.0.0#x', '/plugins/all/?adds=previews']);
+  assert.deepEqual(r.live.on, ['previews2'], 'the filtered list lights its kind in the panel');
+  assert.deepEqual(r.live.rows, ['alpha', 'gamma']);
+  assert.deepEqual(r.live.set, ['adds: previews ▾']);
+  assert.deepEqual(r.live.sort, ['Stars', 3], 'an unknown sort is the default');
+  assert.equal(r.live.review.pressed.replace(/ .*/, ''), 'v1.0.0');
+  assert.ok(r.live.review.text.includes('aaaaaaaaaa') && r.live.review.text.includes('1 July 2026') && !/pull request/.test(r.live.review.text));
+  assert.match(r.live.review.readme, /Alpha previews database files\./, 'the README stays on the page');
+  assert.deepEqual(r.typed, { rows: ['gamma'], url: '/plugins/all/?q=gam' }, 'typing in the filter keeps the address current');
 });
 
 ui('the search field lists results and Escape closes it', (r) => {
   assert.ok(r.search.open && r.search.shown);
-  assert.deepEqual(r.search.items, ['alpha', 'Filter the list by “alp”']);
+  assert.deepEqual(r.search.items, [['alpha', '/plugins/alpha/'], ['Filter the list by “alp”', '/plugins/all/?q=alp']]);
   assert.ok(r.search.closed);
-  assert.ok(r.search.docs.some(([l, h]) => l === 'Updating' && h === '#/docs/usage#updating'), 'it finds a section of the docs');
+  assert.ok(r.search.docs.some(([l, h]) => l === 'Updating' && h === '/docs/usage/#updating'), 'it finds a section of the docs');
+  assert.ok(r.search.part.some(([l, h]) => l === 'Requirements' && h === '/install/'), 'a section that is part of Install opens Install');
+  assert.deepEqual([r.search.recent[0], r.search.first], ['recently viewed', ['gamma', '/plugins/gamma/']], 'the plugin opened last is first in the empty search field');
 });
 
 ui('the filter menus open one at a time', (r) => {
@@ -834,83 +956,13 @@ ui('the filter menus open one at a time', (r) => {
   assert.equal(r.rows.length, 3);
 });
 
-ui('a plugin page shows the recording, the four rooms, the README and the Related tab with its count', (r) => {
-  assert.ok(r.plugin.rec && r.plugin.player);
-  assert.match(r.plugin.ctl, /^PauseRestart\d+ s, 80 by 24 cells$/);
-  assert.deepEqual(r.plugin.rooms.map(([c]) => c.replace('rcell ', '')), ['shows on', 'files', 'network on', 'agent']);
-  assert.match(r.plugin.rooms[0][1], /previews/);
-  assert.match(r.plugin.rooms[2][1], /only api\.example\.com on port 443/);
-  assert.match(r.plugin.rooms[1][1], /walled off/);
-  assert.match(r.plugin.readme, /Alpha previews database files\./);
-  assert.deepEqual(r.plugin.tabs, ['Overview', 'Review', 'Releases', 'Related 1']);
-  assert.equal(r.plugin.install, 'nerd --plugin-add https://github.com/nerdterm/alpha');
-  assert.deepEqual(r.plugin.related, ['gamma']);
-  assert.deepEqual([r.plugin.mark, r.plugin.official], [['Official: published by the nerd project'], ['Official: published by the nerd project']]);
-  assert.equal(r.plugin.check, `git ls-remote https://github.com/nerdterm/alpha refs/tags/v1.1.0`, 'the command that shows the tag is the commit');
+ui('the recording plays, its button pauses it, and a plugin without one stays on whole pixels', (r) => {
+  assert.ok(r.plugin.player);
   assert.deepEqual(r.plugin.clipped, { 320: [], 1024: [], 1280: [] }, 'no room heading is cut off');
   assert.deepEqual(r.plugin.toggle, ['Play', 'Pause'], 'the page\'s own button pauses and plays the recording');
   assert.ok(r.plugin.gap <= 2, `the player is as high as its terminal (${r.plugin.gap}px more)`);
-});
-
-ui('the Review tab shows each release as the catalog has it and invents no checks', (r) => {
-  const t = r.review.text;
-  assert.match(t, /v1\.1\.0 reviewed/);
-  assert.ok(t.includes('bbbbbbbbbb') && t.includes('20 September 2026'), t);
-  assert.deepEqual(r.review.terms, ['commit', 'in the catalog', 'review', 'pull request']);
-  assert.ok(r.review.hrefs.includes('https://github.com/nerdterm/alpha/commit/' + B));
-  assert.ok(r.review.hrefs.includes('https://github.com/nerdterm/nerd-plugins/pull/7'), 'the catalog pull request, when the history names one');
-  assert.match(t, /The full receipt of each check will appear here once the review publishes it\./);
-  assert.ok(!/example|OSV|GuardDog|YARA|Gitleaks|lockfile|sandbox trial|sample/i.test(t) && !r.review.receipts, t);
-  assert.equal(r.review.pressed.replace(/ .*/, ''), 'v1.1.0');
-  assert.equal(r.review.old.pressed.replace(/ .*/, ''), 'v1.0.0');
-  assert.ok(r.review.old.text.includes('aaaaaaaaaa') && r.review.old.text.includes('1 July 2026') && !/pull request/.test(r.review.old.text));
-});
-
-ui('revoked and unavailable plugins say so, and an author’s markup stays text', (r) => {
   assert.deepEqual(r.gamma.offGrid, { 390: [], 1440: [] }, 'a plugin page without a recording stays on whole pixels');
-  assert.ok(r.gamma.notices.some((n) => /Revoked\. The catalog revoked v1\.0\.0 on 3 October: it read files outside the tree\. nerd will not run it\. Do not install it\./.test(n)), r.gamma.notices.join('|'));
-  assert.ok(r.beta.notices.some((n) => /^Revoked\. The catalog warns about <b>v9<\/b> on 3 October: it logs a token\. nerd warns whoever has it\.$/.test(n)), r.beta.notices.join('|'));
-  assert.ok(r.beta.notices.some((n) => /^Source unavailable at build time\./.test(n)));
-  assert.ok(r.beta.html.includes('&lt;b&gt;v9&lt;/b&gt;') && !r.beta.bold.includes('v9'), 'a tag is escaped');
-  assert.match(r.beta.rooms, /could not be read at build time\. It is unknown, not none\./);
-  assert.match(r.unknown, /Writes files, details unknown/);
-});
-
-ui('odd addresses render a page that says nothing is there', (r) => {
-  assert.match(r.odd['#/__proto__'], /This address does not exist\./);
-  assert.match(r.odd['#/constructor'], /This address does not exist\./);
-  assert.match(r.odd['#/plugin/%E0%A4%A'], /No plugin called “%E0%A4%A”\./);
-  assert.match(r.odd['#/docs/__proto__'], /This page is not in the docs\./);
-  assert.deepEqual(r.odd.sort, ['Stars', 3]);
-});
-
-ui('each new page renders and holds no placeholder', (r) => {
-  for (const [k, p] of Object.entries(r.pages)) {
-    assert.ok(p.text.length > 200, `${k} has text`);
-    assert.ok(!p.text.includes('[owner:'), k);
-    assert.deepEqual(p.ph, [], k);
-    assert.ok(!/support nerd|donat/i.test(p.text), k);
-    assert.ok(!/\b(best|leading|revolutionary|world-class)\b/i.test(p.text), `${k}: no slogans`);
-  }
-  assert.equal(r.pages.why.title, 'why nerd plugins');
-  assert.equal(r.pages.why.cells, 4, 'four blocks');
-  assert.match(r.pages.why.text, /your files except those the plugin guide names: ~\/\.ssh, ~\/\.aws, the shell histories, the whole of ~\/Library \(keychains, cookies\) and nerd's state root \(sessions, logs\)\. Any other file in your home folder is readable, token files such as ~\/\.codex\/auth\.json and ~\/\.git-credentials included\./);
-  assert.match(r.pages.about.text, /terminal multiplexer for AI agents on macOS/);
-  assert.match(r.pages.about.text, /No accounts\. No cookies\. No analytics and no download counts\. nerd reads the catalog only when you choose Refresh catalog\./);
-  assert.ok(r.pages.about.hrefs.includes('https://github.com/nerdterm/nerd') && r.pages.about.hrefs.includes('https://github.com/nerdterm/nerd-plugins'));
-  assert.ok(r.pages.contact.hrefs.includes('https://github.com/nerdterm/nerd/blob/master/SECURITY.md'));
-  assert.ok(r.pages.contact.hrefs.some((h) => h.startsWith('https://github.com/nerdterm/nerd-plugins/issues')));
-  for (const key of ['nerd-plugins-theme', 'nerd-plugins-recent']) assert.ok(r.pages.privacy.text.includes(key), key);
-  assert.match(r.pages.privacy.text, /sets no cookies/);
-  assert.match(r.pages.privacy.text, /hosted on GitHub Pages\. GitHub logs visitors’ IP addresses for security and operations/);
-  assert.ok(r.pages.privacy.hrefs.includes('https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement'));
-  assert.match(r.pages.about.text, /made by Evgeniy Kovrov \(github\.com\/nyxene\), a private person, as a personal, non-commercial open-source project; no money is taken\./);
-  assert.match(r.pages.contact.text, /There is no e-mail address\./);
-  assert.ok(r.pages.contact.hrefs.includes('https://github.com/nerdterm/nerd/issues'));
-  assert.match(r.pages.legal.text, /Evgeniy Kovrov \(github\.com\/nyxene\), a private person\./);
-  assert.match(r.pages.legal.text, /“nerd” and its logo are the project’s names\. Other names belong to their owners\./);
-  assert.ok(!/imprint/i.test(r.pages.legal.text), 'no imprint');
-  assert.ok(r.pages.legal.hrefs.includes('https://github.com/nerdterm/nerd-plugins/blob/main/LICENSE'));
+  assert.equal(r.gamma.bands, 12, 'the sketch\'s bands are shaped by the script, not by a style attribute');
 });
 
 ui('the theme switch in the status line sets the theme and remembers only that', (r) => {
@@ -935,9 +987,9 @@ test('the page asks for each of its files by a fingerprint of its content', () =
   fs.writeFileSync(path.join(dir, 'alpha.json'), JSON.stringify({ ...alpha, cast: cast('one') }));
   const out = tmp('fp');
   build(out, dir, root, { nerdRepo, today: '2026-10-05', nerd: null });
-  const html = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
-  const refs = [...html.matchAll(/(?:src|href)="([^"#:]+\.(?:css|js))(\?v=([0-9a-f]+))?"/g)];
-  assert.deepEqual(refs.map(([, file]) => file).sort(), ['app.js', 'catalog-front.css', 'catalog-front.js', 'home.css', 'home.js', 'nerd-docs.js', 'pages.css', 'pages.js', 'site.css', 'space.js', 'style.css', 'theme.js', 'vendor/asciinema-player/asciinema-player.css', 'vendor/asciinema-player/asciinema-player.min.js']);
+  const html = page(out, '/plugins/alpha/review/');
+  const refs = [...html.matchAll(/(?:src|href)="\/([^"#:]+\.(?:css|js))(\?v=([0-9a-f]+))?"/g)];
+  assert.deepEqual(refs.map(([, file]) => file).sort(), ['app.js', 'catalog-front.css', 'catalog-front.js', 'data.js', 'home.css', 'home.js', 'pages.css', 'render.js', 'site.css', 'space.js', 'style.css', 'theme.js', 'vendor/asciinema-player/asciinema-player.css', 'vendor/asciinema-player/asciinema-player.min.js']);
   for (const [, file, , v] of refs) assert.equal(v, fingerprint(fs.readFileSync(path.join(out, file))), file);
   const first = JSON.parse(fs.readFileSync(path.join(out, 'catalog.json'), 'utf8')).plugins[0].cast.v;
   assert.equal(first, fingerprint(fs.readFileSync(path.join(out, 'casts', 'alpha.cast'))));
@@ -945,8 +997,8 @@ test('the page asks for each of its files by a fingerprint of its content', () =
   build(out, dir, root, { nerdRepo, today: '2026-10-05', nerd: null });
   assert.notEqual(JSON.parse(fs.readFileSync(path.join(out, 'catalog.json'), 'utf8')).plugins[0].cast.v, first, 'a new recording, a new fingerprint');
   assert.notEqual(fingerprint('a'), fingerprint('b'));
-  assert.match(fs.readFileSync(path.join(out, 'app.js'), 'utf8'), /casts\/\$\{encodeURIComponent\(p\.name\)\}\.cast\?v=\$\{encodeURIComponent\(p\.cast\.v\)\}/);
-  assert.ok(fs.readFileSync(path.join(out, 'app.js'), 'utf8').includes('href="catalog.json"'), 'the About page links the data');
+  assert.match(fs.readFileSync(path.join(out, 'app.js'), 'utf8'), /`\/casts\/\$\{encodeURIComponent\(el\.dataset\.cast\)\}\.cast\?v=\$\{encodeURIComponent\(el\.dataset\.fp\)\}`/);
+  assert.ok(fs.readFileSync(path.join(out, 'render.js'), 'utf8').includes('href="/catalog.json"'), 'the About page links the data');
 });
 
 /** Runs scripts/review.sh on a plugin made of `files`, with nerd and the scanners stubbed; `stubs` replaces tools. */

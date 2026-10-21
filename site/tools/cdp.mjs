@@ -1,7 +1,7 @@
 // Headless Chrome over CDP: screenshots, console errors and measurements of a built site served at $SITE
 // (default http://127.0.0.1:4110/; serve a build with `python3 site/tools/serve.py 4110 <out>`: the page loads its
 // files in parallel, and Python's plain http.server drops some of them).
-// node tools/cdp.mjs <url path, e.g. "?v=2#/"> [--w 1440] [--h 900] [--shot shots/x.png] [--full] [--wait 1500]
+// node tools/cdp.mjs <url path, e.g. "plugins/all/?view=grid"> [--w 1440] [--h 900] [--shot shots/x.png] [--full] [--wait 1500]
 //   [--eval "js returning JSON-able"] [--theme light|dark] [--clip x,y,w,h]
 // Prints console errors and the --eval result as JSON. Exits non-zero on a page error.
 import { spawn } from 'node:child_process';
