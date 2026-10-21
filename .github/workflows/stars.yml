@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   count:
+    # a manual run from another branch would merge that branch with the count
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
