@@ -764,6 +764,16 @@ const at = (W) => { const q = new URLSearchParams(W.location.search); q.delete('
     R.home = { theme: all(D, '#status .theme button').map(txt), errors: [] };
     all(D, '.h7d')[0].click(); await sleep(100);
     R.home.flow = { lit: all(D, '.h7flow path.h7on').map((p) => p.dataset.f), cap: txt(D.getElementById('h7cap')) };
+    // a path starts on its room's edge, so any point of it inside a room means it runs through that room
+    const m = D.querySelector('.h7map').getBoundingClientRect(), rooms = all(D, '.h7r').map((x) => [x.dataset.k, x.getBoundingClientRect()]);
+    R.home.flow.through = [...new Set(all(D, '.h7flow path').flatMap((p) => {
+      const out = [];
+      for (let i = 2; i < p.getTotalLength() - 2; i += 2) {
+        const q = p.getPointAtLength(i), x = q.x + m.left, y = q.y + m.top;
+        for (const [k, b] of rooms) if (x > b.left + 1 && x < b.right - 1 && y > b.top + 1 && y < b.bottom - 1) out.push(p.dataset.f + ' through ' + k);
+      }
+      return out;
+    }))];
     ({ W, D } = await open('/plugins/'));
     R.front = { doors: all(D, '.cf-d').map((d) => txt(d.querySelector('b')) + (d.classList.contains('shut') ? ' shut' : ' open')) };
     all(D, '.cf-pick .btn')[1].click(); await sleep(100);
@@ -927,6 +937,7 @@ const ui = (name, fn) => test(name, { skip: !CHROME && 'no Chrome found (set CHR
 ui('the plans come alive: a door shows its path, another plugin redraws its sandbox', (r) => {
   assert.deepEqual(r.home.theme, ['System', 'Light', 'Dark'], 'the theme switch sits in the status line');
   assert.deepEqual(r.home.flow.lit, ['git'], 'a door shows its own path');
+  assert.deepEqual(r.home.flow.through, [], 'every path goes around the rooms, none through one');
   assert.match(r.home.flow.cap, /your own process, outside the server’s sandbox/);
   assert.deepEqual(r.front.doors, ['nerd open', 'your files shut', 'the network open', 'coding agents shut']);
   assert.ok(r.front.second.length === 4 && r.front.second[0] === 'nerd open', 'another plugin redraws the plan');

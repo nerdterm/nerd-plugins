@@ -118,7 +118,8 @@
     const items = [...root.querySelectorAll('[data-k]')], el = (k) => root.querySelector(`[data-k="${k}"]`);
     let sel = '', hov = '';
     // each door's path runs from its room through the lane inside the Mac's wall to the door: up and over for the
-    // client, straight right for the server and the plugin room. Drawn only when the doors stand beside the Mac.
+    // client, down and under the server for the programs, straight right for the server and the plugin room. Drawn
+    // only when the doors stand beside the Mac.
     const draw = () => {
       svg.innerHTML = '';
       const m = map.getBoundingClientRect(), mac = root.querySelector('.h7mac').getBoundingClientRect();
@@ -128,11 +129,15 @@
       svg.setAttribute('viewBox', `0 0 ${m.width} ${m.height}`);
       const X = (v) => Math.round(v - m.left) + 0.5, Y = (v) => Math.round(v - m.top) + 0.5;
       const lane = X(mac.right - 8), wall = X(mac.right), top = Y(mac.top + 12);
+      // the gap between the rooms above and the plugins' frame: the programs' way out under the server
+      const under = Y((Math.max(el('prog').getBoundingClientRect().bottom, el('server').getBoundingClientRect().bottom) + root.querySelector('.h7pl').getBoundingClientRect().top) / 2);
       svg.innerHTML = Object.entries(FROM).map(([k, from]) => {
         const r = el(from).getBoundingClientRect(), dy = Y(el(k).getBoundingClientRect().top + 10);
         const d = from === 'client'
           ? `M${X(r.left + r.width * 0.75)} ${Y(r.top)} V${top} H${lane} V${dy} H${wall}`
-          : `M${X(r.right)} ${Y(r.top + (from === 'server' ? 40 : r.height / 2))} H${lane} V${dy} H${wall}`;
+          : from === 'prog'
+            ? `M${X(r.left + r.width * 0.75)} ${Y(r.bottom)} V${under} H${lane} V${dy} H${wall}`
+            : `M${X(r.right)} ${Y(r.top + (from === 'server' ? 40 : r.height / 2))} H${lane} V${dy} H${wall}`;
         return `<path data-f="${k}" d="${d}"></path>`;
       }).join('');
       paint();
