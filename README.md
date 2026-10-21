@@ -5,7 +5,7 @@
   <img src="site/brand/nerd-logo-light.svg" alt="nerd" width="360">
 </picture>
 
-**The catalog of reviewed plugins for nerd.**
+**The catalog of reviewed plugins for nerd by nerdterm.**
 
 [Browse plugins](https://nerdterm.dev/plugins/) · [Add yours](#adding-or-updating-a-plugin) · [nerdterm.dev](https://nerdterm.dev)
 
