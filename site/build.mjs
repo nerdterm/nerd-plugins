@@ -709,7 +709,7 @@ export function nerdDocs(dir) {
     tagline,
     lede: html(lede),
     waysOut: markdown(waysOut).replace(/^<p>|<\/p>$/g, ''),
-    docs: pages.map((p) => ({ title: p.title, slug: p.slug, file: p.file, part: PART[p.slug] ?? null, subs: subs(p), html: p.file === 'README.md' ? html(p.md.join('\n')) : html(p.md.join('\n'), pageUrl(p.slug), 'docs/') })),
+    docs: pages.map((p) => ({ title: p.title, slug: p.slug, file: p.file, part: PART[p.slug] ?? null, subs: subs(p), summary: p.md.join('\n').match(/<!-- summary: (.+?) -->/)?.[1] ?? null, html: p.file === 'README.md' ? html(p.md.join('\n')) : html(p.md.join('\n'), pageUrl(p.slug), 'docs/') })),
     anchors: anchorPage,
     security: html(read('SECURITY.md').replace(/^# .*\n/, ''), `${SITE}/security/`),
     changelog: versions,
@@ -743,6 +743,9 @@ export function build(out, dataDir, root = repo, opts = {}) {
   const clash = data.plugins.filter((p) => RESERVED.includes(p.name)).map((p) => p.name);
   if (clash.length) throw new Error(`a plugin cannot be called ${clash.join(', ')}: /plugins/${clash[0]}/ is a page of the site`);
   const R = render(data, nd);
+  // nerd's docs before 0.14 carry no summaries; their pages fall back to their first paragraph
+  const bare = R.DOCNAV.filter((d) => !d.summary).map((d) => d.slug);
+  if (bare.length) console.warn(`no <!-- summary: … --> in nerd's docs for ${bare.join(', ')}: their first paragraph describes them`);
   // the browser keeps only what its conveniences read: the catalog without the READMEs, the docs' titles and parts.
   // Inside a script only `</` could end it early; JSON never needs a raw `<`.
   const js = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
@@ -767,9 +770,6 @@ export function build(out, dataDir, root = repo, opts = {}) {
   const pages = R.pages();
   for (const pg of pages) write(path.join(out, pg.path, 'index.html'), R.page({ seg: pg.seg, q }), SITE + pg.path);
   write(path.join(out, '404.html'), R.page({ seg: ['404'], q }), `${SITE}/404.html`);
-  // /docs/ opens the first docs page
-  const first = R.docHref(R.DOCNAV[0]);
-  fs.writeFileSync(path.join(out, 'docs', 'index.html'), `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=${first}"><title>Docs · nerd</title><a href="${first}">Docs</a>\n`);
   fs.writeFileSync(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((pg) => `  <url><loc>${SITE}${pg.path}</loc></url>`).join('\n')}\n</urlset>\n`);
   fs.writeFileSync(path.join(out, 'data.js'), dataJs);
   fs.writeFileSync(path.join(out, 'catalog.json'), JSON.stringify(data, null, 1) + '\n');

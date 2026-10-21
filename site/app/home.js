@@ -25,7 +25,7 @@
   const LINKS = { client: [['l1', 'both']], server: [['l1', 'both'], ['l2', 'both']], prog: [['l2', 'both']], clip: [['l1', 'back']] };
 
   (globalThis.NERD_HOMES ||= {}).home = (rt, api) => {
-    const { esc, all, INSTALL, BREW, copyBtn, DOCS, roomIcons, markIcon, starN, docHref, pluginHref, DOCNAV } = api;
+    const { esc, all, INSTALL, BREW, copyBtn, DOCS, roomIcons, markIcon, starN, pluginHref } = api;
     const cmd = (t, cls = '') => `<div class="cmd ${cls}"><code>${esc(t).replace(/\//g, '/<wbr>').replace(/([^/>]+ \| \S+)$/, '<span class="nw">$1</span>')}</code>${copyBtn(t)}</div>`;
     const sec = (id, title, r, body) => `<section class="h7s" aria-labelledby="${id}"><header class="h7hd"><h2 id="${id}" class="h7h">${title}</h2>${r ? `<span class="h7r2">${r}</span>` : ''}</header>${body}</section>`;
     const eg = (k) => { const m = Object.keys(EGRESS).find((x) => EGRESS[x] === k); return m ? ` data-egress="${m}"` : ''; };
@@ -74,7 +74,7 @@
       <h1>Shells. Agents. You decide.</h1>
       <p class="h7lede">nerd is a terminal multiplexer for AI agents on macOS. Its sidebar shows which agent is working, which is waiting for you and which has finished.</p>
       ${cmd(INSTALL, 'go')}
-      <div class="h7act"><a class="btn" href="${docHref(DOCNAV[0])}">Read the docs</a><a class="btn" href="/plugins/">Browse the catalog</a></div>
+      <div class="h7act"><a class="btn" href="/docs/">Read the docs</a><a class="btn" href="/plugins/">Browse the catalog</a></div>
       <p class="h7fine">macOS only, Apple Silicon prebuilt. Early 0.x software, MIT, open source.</p>
     </div><div class="h-logo"><img class="dk" src="/brand/nerd-logo-dark.svg" alt="nerd: world control for your terminal" width="896" height="404"><img class="lt" src="/brand/nerd-logo-light.svg" alt="nerd: world control for your terminal" width="896" height="404"></div></div>
     ${plan}`;

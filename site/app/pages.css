@@ -47,6 +47,9 @@
 .pg-doc td + td, .pg-doc th + th { min-width: 20ch; }
 .pg-doc td code { border: 0; padding: 0; font-weight: 600; overflow-wrap: normal; }
 .pg-sum { max-width: 78ch; margin: 0 0 var(--s2); }
+.pg-ix { max-width: 78ch; margin: 0; padding: 0; list-style: none; }
+.pg-ix li + li { margin-top: var(--s3); }
+.pg-ix span { display: block; color: var(--muted); }
 
 /* previous, next, edit */
 .pg-pager { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); margin: var(--s3) 0 var(--s1); }

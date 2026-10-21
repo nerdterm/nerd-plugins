@@ -525,8 +525,19 @@ test('every page is its own file, complete without a script, with its address, t
   const list = pagesOf(out).sort();
   assert.deepEqual(list, ['/', '/about/', '/authors/nerdterm/', '/authors/other/', '/authors/someone/', '/changelog/', '/contact/', '/docs/', '/docs/license/', '/docs/messages-between-agents/', '/docs/plugins/', '/docs/quick-start/', '/docs/usage/', '/install/', '/legal/', '/plugins/', '/plugins/add/', '/plugins/all/', '/plugins/alpha/', '/plugins/alpha/related/', '/plugins/alpha/releases/', '/plugins/alpha/review/', '/plugins/beta/', '/plugins/beta/releases/', '/plugins/beta/review/', '/plugins/gamma/', '/plugins/gamma/related/', '/plugins/gamma/releases/', '/plugins/gamma/review/', '/plugins/review/', '/plugins/why/', '/privacy/', '/security/']);
   const sitemap = [...read(out, 'sitemap.xml').matchAll(/<loc>https:\/\/nerdterm\.dev(\/[^<]*)<\/loc>/g)].map((m) => m[1]).sort();
-  assert.deepEqual(sitemap, list.filter((p) => p !== '/docs/'), 'the sitemap lists every page; /docs/ only opens the first docs page');
-  assert.match(read(out, 'docs', 'index.html'), /<meta http-equiv="refresh" content="0; url=\/docs\/quick-start\/">/);
+  assert.deepEqual(sitemap, list, 'the sitemap lists every page');
+  const docs = page(out, '/docs/');
+  assert.ok(!docs.includes('http-equiv="refresh"'), '/docs/ is a page, not a redirect');
+  assert.match(docs, /<title>Docs · nerd<\/title>/);
+  assert.match(docs, /<link rel="canonical" href="https:\/\/nerdterm\.dev\/docs\/">/);
+  assert.deepEqual(hrefs(docs).filter((h) => h.startsWith('/docs/')), ['/docs/quick-start/', '/docs/usage/', '/docs/plugins/', '/docs/messages-between-agents/', '/docs/license/'], 'the index links every docs page, in the order of the panel');
+  const desc = (p) => page(out, p).match(/<meta name="description" content="([^"]*)"/)[1];
+  assert.equal(desc('/docs/usage/'), 'The mouse, the keys and every command.', 'a page with a summary is described by it');
+  assert.ok(main(docs).includes('<span>The mouse, the keys and every command.</span>'), 'and the index shows it');
+  assert.ok(!page(out, '/docs/usage/').includes('summary:'), 'the summary itself is not on the page');
+  assert.equal(desc('/docs/license/'), 'MIT, as &quot;LICENSE&quot; says &lt;b&gt;here&lt;/b&gt;.', 'a summary is text, escaped in the description');
+  assert.ok(main(docs).includes('<span>MIT, as &quot;LICENSE&quot; says &lt;b&gt;here&lt;/b&gt;.</span>'), 'and in the index');
+  assert.ok(main(docs).includes(`<span>${desc('/docs/quick-start/')}</span>`) && desc('/docs/quick-start/').length > 0, 'a page without one keeps its first paragraph');
   assert.match(read(out, 'robots.txt'), /Sitemap: https:\/\/nerdterm\.dev\/sitemap\.xml/);
   const titles = new Set();
   for (const p of sitemap) {
@@ -542,7 +553,7 @@ test('every page is its own file, complete without a script, with its address, t
   }
   assert.equal(page(out, '/').match(/<title>([^<]*)<\/title>/)[1], 'nerd: a terminal multiplexer that shows what your AI agents are doing');
   assert.equal(page(out, '/plugins/alpha/').match(/<meta name="description" content="([^"]*)"/)[1], 'S', 'a plugin page is described by its summary');
-  assert.match(page(out, '/docs/usage/').match(/<meta name="description" content="([^"]*)"/)[1], /^After installing a new version, a card says Update available\./, 'a docs page by its first paragraph');
+  assert.equal(page(out, '/docs/messages-between-agents/').match(/<meta name="description" content="([^"]*)"/)[1], 'Panes send each other messages with nerd send.', 'a docs page without a summary by its first paragraph');
   // nothing in the build sends a visitor to a hash route, and nothing is a hash route
   for (const f of fs.readdirSync(out, { recursive: true }).filter((f) => /\.(html|js|css|json|xml|txt)$/.test(f) && !f.startsWith('vendor'))) assert.ok(!read(out, f).includes('#/'), `${f} has no hash route`);
   const nf = read(out, '404.html');
@@ -580,7 +591,7 @@ test('the panel is the whole site map, the same on every page; only the highligh
   assert.deepEqual(sections(home)[2].rows.map((r) => r.l), ['About', 'Contact', 'Privacy', 'Legal']);
   assert.deepEqual(lit(home), ['Home']);
   const on = {};
-  for (const p of pagesOf(out).filter((p) => p !== '/docs/')) {
+  for (const p of pagesOf(out)) {
     const h = page(out, p);
     assert.deepEqual(navOf(h), navOf(home), `${p}: the same rows on every page`);
     on[p] = lit(h);
@@ -591,13 +602,14 @@ test('the panel is the whole site map, the same on every page; only the highligh
   assert.deepEqual(on['/plugins/add/'], ['Add your plugin']);
   assert.deepEqual(on['/about/'], ['About']);
   assert.deepEqual(on['/docs/usage/'], ['Usage']);
+  assert.deepEqual(on['/docs/'], ['Docs']);
   assert.deepEqual(on['/plugins/alpha/'], ['All plugins3'], 'a plugin lights the list it belongs to');
   assert.deepEqual(on['/plugins/alpha/review/'], ['All plugins3']);
   assert.deepEqual(on['/authors/someone/'], ['All plugins3']);
   assert.deepEqual(on['/install/'], ['Install']);
   assert.deepEqual(on['/plugins/'], ['Catalog']);
   assert.equal(sections(home)[0].rows.find((r) => r.l === 'Docs').cls.includes(' on'), false);
-  assert.ok(tree(home).includes('href="/docs/quick-start/"><span class="g" aria-hidden="true"></span><span class="l">Docs</span>'), 'Docs opens the first docs page');
+  assert.ok(tree(home).includes('href="/docs/"><span class="g" aria-hidden="true"></span><span class="l">Docs</span>'), 'Docs opens the index of the docs');
   assert.ok(tree(home).includes('href="/plugins/all/?adds=previews"'), 'a kind of plugin is the list filtered by it');
 });
 

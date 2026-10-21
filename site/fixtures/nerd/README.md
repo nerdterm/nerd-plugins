@@ -53,6 +53,7 @@ nerd --install-hook
 Other agents are recognised by name, and their state is read from what they print.
 
 ## Usage
+<!-- summary: The mouse, the keys and every command. -->
 
 ### Updating
 
@@ -95,5 +96,6 @@ nerd --uninstall
 ```
 
 ## License
+<!-- summary: MIT, as "LICENSE" says <b>here</b>. -->
 
 MIT, see [LICENSE](LICENSE).

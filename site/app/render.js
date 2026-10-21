@@ -160,12 +160,12 @@
         return row(r, last) + (r.kids || []).map((k, j) => row({ ...k, sub: true }, j === r.kids.length - 1, last)).join('');
       }).join('');
       const sec = (label, list) => `<div class="sec open"><div class="h">${label}</div>${rows(list)}</div>`;
-      const docSlug = s0 === 'docs' ? rt.seg[1] || DOCNAV[0].slug : null;
+      const docSlug = s0 === 'docs' ? rt.seg[1] || null : null;
       const kinds = Object.keys(KIND).map((k) => [k, cnt((p) => (p.kinds || []).includes(k))]).filter((x) => x[1] > 0);
       const nerd = [
         { h: '/', l: 'Home', on: s0 === '' },
         { h: '/install/', l: 'Install', on: s0 === 'install' },
-        { h: docHref(DOCNAV[0]), l: 'Docs', on: false, kids: DOCNAV.map((d) => ({ h: docHref(d), l: esc(d.title), on: docSlug === d.slug })) },
+        { h: '/docs/', l: 'Docs', on: s0 === 'docs' && !docSlug, kids: DOCNAV.map((d) => ({ h: docHref(d), l: esc(d.title), on: docSlug === d.slug })) },
         { h: '/security/', l: 'Security', on: s0 === 'security' },
         { h: '/changelog/', l: 'Changelog', on: s0 === 'changelog' },
       ];
@@ -449,11 +449,12 @@
     // ---------- pages
     // a docs page is described by its first paragraph, cut at a word
     const firstPara = (html) => { const t = text((html.match(/<p>([\s\S]*?)<\/p>/)?.[1] ?? '').replace(/<[^>]+>/g, '')); return t.length > 160 ? t.slice(0, t.lastIndexOf(' ', 157)) + '…' : t; };
+    const docDesc = (d) => d.summary || firstPara(d.html || '') || `${d.title}, from nerd’s documentation.`;
     function meta(rt) {
       const s = rt.seg[0] || '', n = rt.seg[1];
       if (s === '') return [TITLE_HOME, DESC_HOME];
       if (s === 'install') return ['Install · nerd', 'How to install nerd on macOS: the install command, what it needs, its limits, building from source, updating and uninstalling.'];
-      if (s === 'docs') { const d = DOCNAV.find((x) => x.slug === n); return d ? [`${d.title} · nerd docs`, firstPara(d.html || '') || `${d.title}, from nerd’s documentation.`] : NOT_FOUND; }
+      if (s === 'docs') { if (!n) return ['Docs · nerd', `Every page of nerd’s documentation: ${DOCNAV.map((d) => d.title).join(', ')}.`]; const d = DOCNAV.find((x) => x.slug === n); return d ? [`${d.title} · nerd docs`, docDesc(d)] : NOT_FOUND; }
       if (s === 'security') return ['Security · nerd', 'What leaves nerd and what does not: the server’s sandbox, every way out, what a pane and a plugin can do, and how to report a vulnerability.'];
       if (s === 'changelog') return ['Changelog · nerd', `Every release of nerd, newest first${DOCS.version ? `, ${DOCS.version} the latest` : ''}.`];
       if (s === 'catalog') return ['Plugins · nerd', 'Plugins for nerd: previews, panels, top-row text, menu commands, tree marks and hooks into coding agents, each showing what it may do before you install it.'];
@@ -476,7 +477,7 @@
     }
     // every page of the site and its address; a plugin's Related tab exists only when it has something to show
     function pages() {
-      const list = [['/', ['']], ['/install/', ['install']], ...DOCNAV.map((d) => [`/docs/${d.slug}/`, ['docs', d.slug]]), ['/security/', ['security']], ['/changelog/', ['changelog']],
+      const list = [['/', ['']], ['/install/', ['install']], ['/docs/', ['docs']], ...DOCNAV.map((d) => [`/docs/${d.slug}/`, ['docs', d.slug]]), ['/security/', ['security']], ['/changelog/', ['changelog']],
         ['/plugins/', ['catalog']], ['/plugins/all/', ['plugins']], ...['why', 'review', 'add'].map((k) => [`/plugins/${k}/`, [k]])];
       for (const p of all) {
         for (const tab of ['', 'review', 'releases', ...(relatedOf(p).n ? ['related'] : [])]) list.push([`/plugins/${p.name}/${tab ? tab + '/' : ''}`, ['plugin', p.name, ...(tab ? [tab] : [])]]);
@@ -497,7 +498,7 @@
       return { html: out.html, tree: treeHtml(rt), title, desc };
     }
 
-    const API = { missing, esc, text, fmt, fmtShort, num, plural, frame, copyBtn, cmdBox, starN, gainN, roomIcons, markIcon, roomsHtml, roomVal, netWords, install, hay, filtered, listView, resultsHtml, reviewBody, treeHtml, listHref, docHref, pluginHref, page, pages, S, KIND, ROOMS, RISKW, PAGES, FOOT, SITE, FILTERS, LIVE, all, authors, byName, DATA, DOCS, DOCNAV, INSTALL, BREW, NERD_REPO, CATALOG_REPO, THEME_KEY, RECENT_KEY, sketchHtml, GLITCH };
+    const API = { missing, esc, text, fmt, fmtShort, num, plural, frame, copyBtn, cmdBox, starN, gainN, roomIcons, markIcon, roomsHtml, roomVal, netWords, install, hay, filtered, listView, resultsHtml, reviewBody, treeHtml, listHref, docHref, docDesc, pluginHref, page, pages, S, KIND, ROOMS, RISKW, PAGES, FOOT, SITE, FILTERS, LIVE, all, authors, byName, DATA, DOCS, DOCNAV, INSTALL, BREW, NERD_REPO, CATALOG_REPO, THEME_KEY, RECENT_KEY, sketchHtml, GLITCH };
     return API;
   }
 
