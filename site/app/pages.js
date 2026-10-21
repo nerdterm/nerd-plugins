@@ -32,7 +32,9 @@
   };
 
   const docs = (rt, api) => {
-    const D = api.DOCS, slug = rt.seg[1] || 'quick-start', nav = api.DOCNAV, d = nav.find((x) => x.slug === slug) || D.docs.find((x) => x.slug === slug);
+    const D = api.DOCS, slug = rt.seg[1], nav = api.DOCNAV;
+    if (!slug) return layout([], api.frame('docs', `<ul class="pg-ix">${nav.map((x) => `<li>${link(api.docHref(x), api.esc(x.title))}<span>${api.esc(api.docDesc(x))}</span></li>`).join('')}</ul>`, { cls: 'primary' }));
+    const d = nav.find((x) => x.slug === slug) || D.docs.find((x) => x.slug === slug);
     if (!d) return api.missing('This page is not in the docs.');
     const i = nav.indexOf(d), prev = nav[i - 1], next = nav[i + 1], file = d.file || 'README.md';
     const items = d.subs.map((s) => [api.docHref(d, s.slug), api.esc(s.title)]);
