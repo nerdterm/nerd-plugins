@@ -12,8 +12,9 @@
 #status .theme button { align-self: stretch; padding: 0 var(--s2); line-height: inherit; color: var(--muted); }
 #status .theme button:first-child { padding-left: var(--s3); }
 #status .theme button:hover { color: var(--text); background: var(--hov); }
-#status .theme button.on, #status .theme button.on:hover { background: none; color: var(--accent); }
-#status .theme button.on:hover { background: var(--hov); }
+/* the chosen theme is lit from data-pref, which theme.js sets before the first paint */
+:root[data-pref="system"] #theme [data-theme="system"], :root[data-pref="light"] #theme [data-theme="light"], :root[data-pref="dark"] #theme [data-theme="dark"] { background: none; color: var(--accent); }
+:root[data-pref="system"] #theme [data-theme="system"]:hover, :root[data-pref="light"] #theme [data-theme="light"]:hover, :root[data-pref="dark"] #theme [data-theme="dark"]:hover { background: var(--hov); }
 @media (max-width: 860px) {
   /* a phone keeps the version, GitHub and the theme, on the page's 16px gutters */
   #status { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; padding: 0 var(--gut); }

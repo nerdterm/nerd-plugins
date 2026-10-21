@@ -53,9 +53,9 @@
   }
 
   // ---------- status
+  // the buttons are in the page; style.css lights the chosen one from data-pref before any script runs
   function renderTheme() {
-    const pref = root.dataset.pref;
-    $('#theme').innerHTML = ['System', 'Light', 'Dark'].map((t) => `<button class="${pref === t.toLowerCase() ? 'on' : ''}" data-theme="${t.toLowerCase()}" aria-pressed="${pref === t.toLowerCase()}">${t}</button>`).join('');
+    $$('#theme button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.theme === root.dataset.pref)));
   }
   function applyTheme(pref) {
     root.dataset.pref = pref;
@@ -98,9 +98,17 @@
     if (s === 'plugins' && LIVE.some((k) => rt.q.has(k))) { $('#main').innerHTML = R.listView(rt).html; renderTree(rt); }
     else if (s === 'plugin' && rt.seg[2] === 'review' && rt.q.has('r') && byName(rt.seg[1])) $('#main .info > .body').innerHTML = R.reviewBody(byName(rt.seg[1]), rt.q.get('r'));
     hydrate();
-    const prim = $('#main .frame.primary') || $('#main .frame');
+    // a page is a new document: the nav's scroll comes over from the last one, and the focus theme.js marked
+    let was = {};
+    try { was = JSON.parse(sessionStorage.getItem('nerd-site-panel') || '{}'); } catch { /* no storage: the page's own focus */ }
+    if (Array.isArray(was.scroll)) { $('#tree').scrollTop = was.scroll[0]; $('#tree .body').scrollTop = was.scroll[1]; }
+    const prim = root.dataset.panel === 'tree' ? $('#tree') : $('#main .frame.primary') || $('#main .frame');
     if (prim) prim.classList.add('focus');
+    root.dataset.panel = 'set';
   }
+  addEventListener('pagehide', () => {
+    try { sessionStorage.setItem('nerd-site-panel', JSON.stringify({ tree: $('#tree').classList.contains('focus'), scroll: [$('#tree').scrollTop, $('#tree .body').scrollTop] })); } catch { /* no storage */ }
+  });
 
   // ---------- search: the field in the top bar widens over the page and lists what it finds under itself
   let tqIdx = 0, tqItems = [];

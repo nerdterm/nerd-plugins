@@ -20,8 +20,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
 const SITE = 'https://nerdterm.dev';
 
-// The player decodes recordings in WebAssembly, which script-src must allow and nothing else needs.
-export const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
+// The player decodes recordings in WebAssembly, which script-src must allow and nothing else needs. img-src data: is
+// for the stylesheet's own link arrow.
+export const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 export function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -727,7 +728,7 @@ export function egressMissing(markers, homeJs) {
 export const fingerprint = (content) => createHash('sha256').update(content).digest('hex').slice(0, 10);
 // The pages' own files, referenced as `/<file>?v=<fingerprint>` so an update is never served from an old cache.
 const ASSETS = ['theme.js', 'style.css', 'site.css', 'pages.css', 'home.css', 'catalog-front.css', 'render.js', 'home.js', 'catalog-front.js', 'app.js', 'space.js', 'vendor/asciinema-player/asciinema-player.css', 'vendor/asciinema-player/asciinema-player.min.js'];
-const OWN_FILES = [...ASSETS.filter((f) => !f.startsWith('vendor/')), 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt'];
+const OWN_FILES = [...ASSETS.filter((f) => !f.startsWith('vendor/')), 'favicon.svg', 'og.png', 'robots.txt'];
 // pages of the site under /plugins/: a plugin cannot be called the same
 const RESERVED = ['all', 'why', 'review', 'add'];
 
@@ -748,11 +749,16 @@ export function build(out, dataDir, root = repo, opts = {}) {
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(path.join(out, 'casts'), { recursive: true });
   const source = (f) => path.join(here, f.startsWith('vendor/') ? '' : 'app', f);
-  let tpl = fs.readFileSync(path.join(here, 'app', 'page.html'), 'utf8').replace('@@CSP@@', CSP).replace('@@VERSION@@', esc(nd.version ?? ''));
+  // the wordmark is drawn in the page, not loaded, so it is there on the first paint
+  const mark = (f, cls) => fs.readFileSync(path.join(here, 'brand', f), 'utf8').trim().replace(/^<svg /, `<svg class="${cls}" aria-hidden="true" `);
+  let tpl = fs.readFileSync(path.join(here, 'app', 'page.html'), 'utf8').replace('@@CSP@@', CSP).replace('@@VERSION@@', esc(nd.version ?? ''))
+    .replace('@@WORDMARK@@', () => mark('nerd-wordmark-dark.svg', 'dk') + mark('nerd-wordmark-light.svg', 'lt'));
   for (const f of ASSETS) tpl = tpl.replace(`"/${f}"`, `"/${f}?v=${fingerprint(fs.readFileSync(source(f)))}"`);
   tpl = tpl.replace('"/data.js"', `"/data.js?v=${fingerprint(dataJs)}"`);
   const write = (file, pg, url) => {
-    const html = tpl.replace(/@@TITLE@@/g, () => esc(pg.title)).replace(/@@DESC@@/g, () => esc(pg.desc)).replace(/@@URL@@/g, url).replace('@@TREE@@', () => pg.tree).replace('@@MAIN@@', () => pg.html);
+    // the frame focused on load is marked in the file, so style.css draws it from the first paint
+    const main = /class="[^"]*\bprimary\b/.test(pg.html) ? pg.html : pg.html.replace(/class="frame\b/, 'class="frame primary');
+    const html = tpl.replace(/@@TITLE@@/g, () => esc(pg.title)).replace(/@@DESC@@/g, () => esc(pg.desc)).replace(/@@URL@@/g, url).replace('@@TREE@@', () => pg.tree).replace('@@MAIN@@', () => main);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, html);
   };

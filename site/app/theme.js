@@ -12,5 +12,7 @@
   // Framed by another site, the page stays hidden: its Copy buttons must not be clicked through someone else's page.
   try { if (top !== self && top.location.origin !== location.origin) throw 0; } catch (e) { h.hidden = true; }
   h.dataset.pref = pref;
+  // the panel the visitor was in on the last page is drawn focused from the first paint (app.js takes it over)
+  try { if (JSON.parse(sessionStorage.getItem('nerd-site-panel') || '{}').tree) h.dataset.panel = 'tree'; } catch (e) {}
   h.dataset.theme = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
 })();

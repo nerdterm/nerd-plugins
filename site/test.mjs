@@ -474,7 +474,7 @@ test('the build has no example plugin, no variation switch and no inline style, 
   for (const [f, text] of own.filter(([f]) => !f.endsWith('.html'))) assert.ok(!/example/i.test(text), `${f} has no example data`);
   for (const [f, text] of own) assert.ok(!text.includes('id="sw"') && !/ style="/.test(text), `${f}: no switcher, no style attribute (the policy allows none)`);
   assert.ok(!JSON.parse(read(out, 'catalog.json')).plugins.some((p) => /example/i.test(p.name)), 'no example plugin');
-  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'ext.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml', 'install.sh', 'data.js', 'render.js']) assert.ok(fs.existsSync(path.join(out, f)), f);
+  for (const f of ['brand/nerd-logo-light.svg', 'brand/nerd-logo-dark.svg', 'brand/nerd-wordmark-light.svg', 'brand/nerd-wordmark-dark.svg', 'favicon.svg', 'og.png', 'robots.txt', 'sitemap.xml', 'install.sh', 'data.js', 'render.js']) assert.ok(fs.existsSync(path.join(out, f)), f);
   assert.ok(!fs.existsSync(path.join(out, 'pages.js')) && !fs.existsSync(path.join(out, 'nerd-docs.js')), 'the docs are rendered at build time, not shipped');
   const render = read(out, 'render.js');
   assert.match(render, /const THEME_KEY = 'nerd-plugins-theme';/);
@@ -613,7 +613,7 @@ test('the home page is nerd drawn as a plan, then its README, and the status lin
   assert.deepEqual([...m.matchAll(/<h2 id="[^"]*" class="h7h">(.*?)<\/h2>/g)].map((x) => text(x[1])), ['Start in a minute', 'What nerd knows about your agents', 'What else is in it', 'Plugins', 'Limits, said plainly']);
   assert.deepEqual([...m.matchAll(/<tbody><tr><td>(.*?)<\/td>/g)].map((x) => text(x[1])), ['Claude Code'], 'the agents table is the README\'s');
   assert.ok(m.includes('<ul><li>') && m.includes('<ul class="h7feats"><li>'), 'the README\'s lists are on the page as they are');
-  assert.deepEqual([...h.matchAll(/<footer id="status">(.*?)<\/footer>/gs)].map((x) => text(x[1])), ['nerd 0.10.0GitHub'], 'the theme switch is drawn by the browser');
+  assert.deepEqual([...h.matchAll(/<footer id="status">(.*?)<\/footer>/gs)].map((x) => text(x[1])), ['nerd 0.10.0GitHubSystemLightDark'], 'the theme switch is in the page, lit by theme.js before the first paint');
   // no block asking for money; the README's "mouse support" is a requirement, not a plea
   assert.ok(!/support (nerd|us|the project)|donat|sponsor/i.test(text(h)));
 });
@@ -855,7 +855,12 @@ const at = (W) => { const q = new URLSearchParams(W.location.search); q.delete('
     R.narrow = { scrollW: D.documentElement.scrollWidth, brand: rect(D.querySelector('.brand')), menu: rect(D.getElementById('drawerBtn')) };
     ({ W, D } = await open('/'));
     all(D, '#status .theme button')[1].click(); await sleep(100);
-    R.theme = { attr: D.documentElement.dataset.theme, pref: D.documentElement.dataset.pref, saved: W.localStorage.getItem('nerd-plugins-theme'), on: all(D, '#status .theme button.on').map(txt) };
+    R.theme = { attr: D.documentElement.dataset.theme, pref: D.documentElement.dataset.pref, saved: W.localStorage.getItem('nerd-plugins-theme'), on: all(D, '#status .theme button[aria-pressed="true"]').map(txt) };
+    ({ W, D } = await open('/install/'));
+    const nav = document.querySelector('iframe'), next = new Promise((r) => (nav.onload = r));
+    D.querySelector('#tree a[href="/security/"]').click();
+    await next; await sleep(300);
+    R.panel = { url: nav.contentWindow.location.pathname, mark: nav.contentDocument.documentElement.dataset.panel, tree: nav.contentDocument.getElementById('tree').classList.contains('focus'), main: all(nav.contentDocument, '#main .frame.focus').length };
   } catch (e) {
     R.error = String((e && e.stack) || e);
   }
@@ -963,6 +968,10 @@ ui('the recording plays, its button pauses it, and a plugin without one stays on
   assert.ok(r.plugin.gap <= 2, `the player is as high as its terminal (${r.plugin.gap}px more)`);
   assert.deepEqual(r.gamma.offGrid, { 390: [], 1440: [] }, 'a plugin page without a recording stays on whole pixels');
   assert.equal(r.gamma.bands, 12, 'the sketch\'s bands are shaped by the script, not by a style attribute');
+});
+
+ui('a click in the nav keeps the nav focused on the page it opens', (r) => {
+  assert.deepEqual([r.panel.url, r.panel.mark, r.panel.tree, r.panel.main], ['/security/', 'set', true, 0], JSON.stringify(r.panel));
 });
 
 ui('the theme switch in the status line sets the theme and remembers only that', (r) => {
