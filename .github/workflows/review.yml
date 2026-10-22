@@ -50,16 +50,13 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           path: trusted
           persist-credentials: false
-      - name: nerd's latest release, checked against the .sha256 published with it
+      - name: nerd's latest release, its signature checked against the release keys pinned on the base branch
         run: |
           mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/dl" && cd "$RUNNER_TEMP/dl"
           tag=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/nerdterm/nerd/releases/latest)
           tag=${tag##*/}
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no latest release of nerd: $tag" >&2; exit 1; }
-          a=nerd-$tag-macos-arm64.tar.gz
-          curl -fsSL --retry 3 -O "https://github.com/nerdterm/nerd/releases/download/$tag/$a" -O "https://github.com/nerdterm/nerd/releases/download/$tag/$a.sha256"
-          shasum -a 256 -c "$a.sha256"
-          tar -xzf "$a" nerd && install -m 755 nerd "$RUNNER_TEMP/bin/nerd"
+          bash "$GITHUB_WORKSPACE/trusted/.github/nerd-release.sh" "$tag" "$RUNNER_TEMP/bin"
           case "$("$RUNNER_TEMP/bin/nerd" --version)" in
             "nerd ${tag#v} "*) ;;
             *) echo "the installed nerd is not $tag" >&2; exit 1 ;;
