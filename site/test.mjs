@@ -244,6 +244,8 @@ test('nerd\'s docs build the same site from one README or from a README with doc
   const page = (s) => split.docs.find((p) => p.slug === s);
   assert.deepEqual(page('usage').subs.map((x) => x.slug), ['keys', 'updating']);
   assert.match(page('usage').html, /<h3 id="updating">/);
+  // each section carries its own words, lowercased and without markup, for the search field
+  assert.deepEqual(page('usage').subs.map((x) => x.t), ['every key repeats a menu item', 'after installing a new version a card says update available programs in panes can message each other see messages between agents']);
   assert.equal(page('plugins').title, 'Plugins', 'a docs/ page is titled by its own # line');
   // links in docs/ are relative to docs/
   const t = page('troubleshooting').html;

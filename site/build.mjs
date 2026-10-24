@@ -696,7 +696,18 @@ export function nerdDocs(dir) {
   const leaves = pages.map((p) => { const i = p.md.findIndex((l) => /^#{2,4} What leaves nerd$/.test(l)); return i < 0 ? '' : p.md.slice(i + 1).join('\n').split(/\n\s*\n/).map((x) => x.trim()).find(Boolean) ?? ''; }).find(Boolean) ?? '';
   const waysOut = leaves.replace(/\s+/g, ' ').match(/^Each way out(?:`[^`]*`|[^`.]|\.(?!\s|$))*\./)?.[0];
   if (!waysOut) throw new Error("nerd's docs have no \"What leaves nerd\" section that opens with \"Each way out …\"");
-  const subs = (p) => p.md.filter((l) => l.startsWith(p.sub)).map((l) => ({ title: l.slice(p.sub.length), slug: slug(l.slice(p.sub.length)) }));
+  // `t`: the section's words, lowercased, for the search field to match
+  const words = (ls) => ls.join(' ').replace(/<!--[\s\S]*?-->|<[^>]*>/g, ' ').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').toLowerCase().replace(/[^\p{L}\p{N}…⌥⌃⌘-]+/gu, ' ').trim();
+  const subs = (p) => {
+    const top = new RegExp(`^#{1,${p.sub.length - 1}} `);
+    const out = [];
+    for (const l of p.md) {
+      if (l.startsWith(p.sub)) out.push({ title: l.slice(p.sub.length), slug: slug(l.slice(p.sub.length)), body: [] });
+      else if (top.test(l)) out.push(null);
+      else out.at(-1)?.body.push(l);
+    }
+    return out.filter(Boolean).map(({ body, ...x }) => ({ ...x, t: words(body) }));
+  };
   const versions = [];
   for (const part of read('CHANGELOG.md').split(/\n(?=## \[)/).slice(1)) {
     const m = part.match(/^## \[([^\]]+)\]\(([^)]+)\) \(([^)]+)\)/);

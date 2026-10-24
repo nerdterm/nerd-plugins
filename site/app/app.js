@@ -116,7 +116,11 @@
     const toks = q.toLowerCase().split(/\s+/).filter(Boolean);
     const ok = (s) => toks.every((t) => s.toLowerCase().includes(t));
     const g = [];
-    const docHits = toks.length ? [...DOCNAV, ...DOCS.docs.filter((d) => !DOCNAV.includes(d))].flatMap((d) => [[d.title, docHref(d), 'docs'], ...d.subs.map((x) => [x.title, docHref(d, x.slug), `docs, ${d.title}`])]).filter((x) => ok(x[0] + ' ' + x[2])).slice(0, 8) : [];
+    const ds = toks.length ? [...DOCNAV, ...DOCS.docs.filter((d) => !DOCNAV.includes(d))] : [];
+    const docHits = ds.flatMap((d) => [[d.title, docHref(d), 'docs'], ...d.subs.map((x) => [x.title, docHref(d, x.slug), `docs, ${d.title}`])]).filter((x) => ok(x[0] + ' ' + x[2])).slice(0, 8);
+    // sections whose text matches every word come after the title matches
+    const inText = ds.flatMap((d) => d.subs.map((x) => [x.title, docHref(d, x.slug), `docs, ${d.title}`, x])).filter((x) => ok(x[3].t) && !docHits.some((h) => h[1] === x[1])).slice(0, 8).map((x) => x.slice(0, 3));
+    docHits.push(...inText);
     if (docHits.length) g.push(['docs', docHits]);
     const pages = [['Home', '/', 'nerd'], ['Install', '/install/', 'get nerd: the install command, requirements, update, uninstall'], ['Docs', '/docs/', 'how to use nerd'], ['Security', '/security/', 'the sandbox and what leaves nerd'], ['Changelog', '/changelog/', `every release, ${DOCS.version} the latest`], ['Plugins', '/plugins/', 'the catalog'], ['All plugins', '/plugins/all/', 'search, filter and sort'], [PAGES.why, '/plugins/why/', 'what is different here'], [PAGES.review, '/plugins/review/', 'the pipeline and the two marks'], [PAGES.add, '/plugins/add/', 'the steps'], ...FOOT.map((k) => [PAGES[k], `/${k}/`, 'about this site'])].filter((x) => ok(x[0] + ' ' + x[2]));
     const pl = all.filter((p) => ok(hay(p))).slice(0, 12).map((p) => [p.name, pluginHref(p), `${p.review}, ${p.summary}`]);
