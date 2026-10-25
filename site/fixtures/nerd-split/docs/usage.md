@@ -1,5 +1,7 @@
 # Usage
 
+The mouse works everywhere.
+
 ## Keys
 
 Every key repeats a menu item.

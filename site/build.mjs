@@ -696,7 +696,20 @@ export function nerdDocs(dir) {
   const leaves = pages.map((p) => { const i = p.md.findIndex((l) => /^#{2,4} What leaves nerd$/.test(l)); return i < 0 ? '' : p.md.slice(i + 1).join('\n').split(/\n\s*\n/).map((x) => x.trim()).find(Boolean) ?? ''; }).find(Boolean) ?? '';
   const waysOut = leaves.replace(/\s+/g, ' ').match(/^Each way out(?:`[^`]*`|[^`.]|\.(?!\s|$))*\./)?.[0];
   if (!waysOut) throw new Error("nerd's docs have no \"What leaves nerd\" section that opens with \"Each way out …\"");
-  const subs = (p) => p.md.filter((l) => l.startsWith(p.sub)).map((l) => ({ title: l.slice(p.sub.length), slug: slug(l.slice(p.sub.length)) }));
+  // `t`: the section's words, lowercased, for the search field to match
+  const words = (ls) => ls.join(' ').replace(/<!--[\s\S]*?-->|<[^>]*>/g, ' ').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').toLowerCase().replace(/[^\p{L}\p{N}…⌥⌃⌘-]+/gu, ' ').trim();
+  // the text before a page's first section: the whole page when it has none
+  const lead = (p) => { const i = p.md.findIndex((l) => l.startsWith(p.sub)); return words(i < 0 ? p.md : p.md.slice(0, i)); };
+  const subs = (p) => {
+    const top = new RegExp(`^#{1,${p.sub.length - 1}} `);
+    const out = [];
+    for (const l of p.md) {
+      if (l.startsWith(p.sub)) out.push({ title: l.slice(p.sub.length), slug: slug(l.slice(p.sub.length)), body: [] });
+      else if (top.test(l)) out.push(null);
+      else out.at(-1)?.body.push(l);
+    }
+    return out.filter(Boolean).map(({ body, ...x }) => ({ ...x, t: words(body) }));
+  };
   const versions = [];
   for (const part of read('CHANGELOG.md').split(/\n(?=## \[)/).slice(1)) {
     const m = part.match(/^## \[([^\]]+)\]\(([^)]+)\) \(([^)]+)\)/);
@@ -709,7 +722,7 @@ export function nerdDocs(dir) {
     tagline,
     lede: html(lede),
     waysOut: markdown(waysOut).replace(/^<p>|<\/p>$/g, ''),
-    docs: pages.map((p) => ({ title: p.title, slug: p.slug, file: p.file, part: PART[p.slug] ?? null, subs: subs(p), summary: p.md.join('\n').match(/<!-- summary: (.+?) -->/)?.[1] ?? null, html: p.file === 'README.md' ? html(p.md.join('\n')) : html(p.md.join('\n'), pageUrl(p.slug), 'docs/') })),
+    docs: pages.map((p) => ({ title: p.title, slug: p.slug, file: p.file, part: PART[p.slug] ?? null, t: lead(p), subs: subs(p), summary: p.md.join('\n').match(/<!-- summary: (.+?) -->/)?.[1] ?? null, html: p.file === 'README.md' ? html(p.md.join('\n')) : html(p.md.join('\n'), pageUrl(p.slug), 'docs/') })),
     anchors: anchorPage,
     security: html(read('SECURITY.md').replace(/^# .*\n/, ''), `${SITE}/security/`),
     changelog: versions,
@@ -749,7 +762,7 @@ export function build(out, dataDir, root = repo, opts = {}) {
   // the browser keeps only what its conveniences read: the catalog without the READMEs, the docs' titles and parts.
   // Inside a script only `</` could end it early; JSON never needs a raw `<`.
   const js = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
-  const dataJs = `// Built by site/build.mjs; do not edit.\nwindow.NERD_DATA = ${js({ ...data, plugins: data.plugins.map(({ readme, ...p }) => p) })};\nwindow.NERD_DOCS = ${js({ version: nd.version, pluginReads: nd.pluginReads, docs: nd.docs.map(({ title, slug, file, part, subs }) => ({ title, slug, file, part, subs })) })};\n`;
+  const dataJs = `// Built by site/build.mjs; do not edit.\nwindow.NERD_DATA = ${js({ ...data, plugins: data.plugins.map(({ readme, ...p }) => p) })};\nwindow.NERD_DOCS = ${js({ version: nd.version, pluginReads: nd.pluginReads, docs: nd.docs.map(({ title, slug, file, part, t, subs }) => ({ title, slug, file, part, t, subs })) })};\n`;
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(path.join(out, 'casts'), { recursive: true });
   const source = (f) => path.join(here, f.startsWith('vendor/') ? '' : 'app', f);
