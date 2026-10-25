@@ -245,6 +245,12 @@ test('nerd\'s docs build the same site from one README or from a README with doc
   assert.deepEqual(page('usage').subs.map((x) => x.slug), ['keys', 'updating']);
   assert.match(page('usage').html, /<h3 id="updating">/);
   // each section carries its own words, lowercased and without markup, for the search field
+  // a page also carries its own text: before its first section, or all of it when it has none
+  assert.equal(page('usage').t, 'the mouse works everywhere');
+  assert.match(page('isolation').t, /^a pane runs as you until you narrow it what still leaves nerd is in privacy and security/);
+  // the search field cleans its words as the build cleans the text, so "nerdterm.dev" and "⌥+O" match
+  const clean = String.raw`/[^\p{L}\p{N}…⌥⌃⌘-]+/gu`;
+  assert.ok(fs.readFileSync(new URL('./app/app.js', import.meta.url), 'utf8').includes(clean) && fs.readFileSync(new URL('./build.mjs', import.meta.url), 'utf8').includes(clean), 'one cleaning for the text and the words');
   assert.deepEqual(page('usage').subs.map((x) => x.t), ['every key repeats a menu item', 'after installing a new version a card says update available programs in panes can message each other see messages between agents']);
   assert.equal(page('plugins').title, 'Plugins', 'a docs/ page is titled by its own # line');
   // links in docs/ are relative to docs/
