@@ -362,13 +362,18 @@ export function capped(d) {
   return out;
 }
 
+/** Only clone reaches the network; the rest reads the full clone, so a plugin costs at most one clone and a few short reads. */
+// ceiling: a hung plugin costs up to 300 s plus a few 60 s reads against the job's 30 minutes; a deadline for the whole build is the way past if plugins grow many.
+export const LIMITS = { clone: 300_000, call: 60_000 };
+
 /** README, abilities, manifest and recording at the catalog's commit, and each release's manifest: the plugin never run and never built. */
-function fetchData(e, work, versionCommits, nerd) {
+function fetchData(e, work, versionCommits, nerd, limits) {
   if (!GITHUB.test(e.url) || !COMMIT.test(e.commit)) throw new Error('the entry has no GitHub url or no 40-character commit');
   const dir = path.join(work, e.name);
   const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
-  const git = (...a) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'transfer.fsckObjects=true', ...a], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
-  git('clone', '--quiet', '--no-checkout', '--', e.url, dir);
+  const run = (timeout, ...a) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'transfer.fsckObjects=true', ...a], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, timeout });
+  const git = (...a) => run(limits.call, ...a);
+  run(limits.clone, 'clone', '--quiet', '--no-checkout', '--', e.url, dir);
   const lastCommit = lastCommitOf((...a) => git('-C', dir, ...a));
   let tagCommit = null;
   try {
@@ -377,7 +382,7 @@ function fetchData(e, work, versionCommits, nerd) {
     // no such tag: not official
   }
   git('-C', dir, 'checkout', '--quiet', '--detach', e.commit, '--');
-  const check = JSON.parse(execFileSync(nerd, ['--plugin-check', '--json', dir], { encoding: 'utf8' }));
+  const check = JSON.parse(execFileSync(nerd, ['--plugin-check', '--json', dir], { encoding: 'utf8', timeout: limits.call }));
   return { ...readSource(dir, check, versionCommits, (...a) => git('-C', dir, ...a)), lastCommit, tagCommit };
 }
 
@@ -511,7 +516,7 @@ export function catalog(root, dataDir, opts = {}) {
       const { versions, added } = entryHistory(e, root);
       let d;
       try {
-        d = capped(dataDir ? JSON.parse(fs.readFileSync(path.join(dataDir, `${e.name}.json`), 'utf8')) : fetchData(e, work, versions.map((v) => v.commit), nerdBin));
+        d = capped(dataDir ? JSON.parse(fs.readFileSync(path.join(dataDir, `${e.name}.json`), 'utf8')) : fetchData(e, work, versions.map((v) => v.commit), nerdBin, opts.limits ?? LIMITS));
         if (!d.manifest || typeof d.manifest !== 'object') throw new Error('no manifest');
       } catch (err) {
         // A deleted repository, a rewritten history or a failed check: the plugin stays listed, saying so.

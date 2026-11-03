@@ -23,7 +23,7 @@ const B = 'b'.repeat(40);
 const C = 'c'.repeat(40);
 const D = 'd'.repeat(40);
 
-/** A catalog repository whose history has the given dated commits: each writes files, then commits on that day. */
+/** A catalog repository whose history has the given dated commits: each writes files (null removes one), then commits on that day. */
 function catalogRepo(steps) {
   const root = tmp('repo');
   const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' };
@@ -31,8 +31,12 @@ function catalogRepo(steps) {
   git('init', '--quiet', '-b', 'main');
   for (const [date, files, message] of steps) {
     for (const [f, v] of Object.entries(files)) {
+      if (v === null) {
+        fs.rmSync(path.join(root, f));
+        continue;
+      }
       fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
-      fs.writeFileSync(path.join(root, f), typeof v === 'string' ? v : JSON.stringify(v));
+      fs.writeFileSync(path.join(root, f), typeof v === 'string' || Buffer.isBuffer(v) ? v : JSON.stringify(v));
     }
     git.env = { GIT_AUTHOR_DATE: `${date}T12:00:00Z`, GIT_COMMITTER_DATE: `${date}T12:00:00Z` };
     git('add', '-A');
@@ -1048,13 +1052,15 @@ test('the page asks for each of its files by a fingerprint of its content', () =
   assert.ok(fs.readFileSync(path.join(out, 'render.js'), 'utf8').includes('href="/catalog.json"'), 'the About page links the data');
 });
 
-/** Runs scripts/review.sh on a plugin made of `files`, with nerd and the scanners stubbed; `stubs` replaces tools. */
-function review(files, stubs = {}, over = {}) {
+/** Runs scripts/review.sh on a plugin made of `files`, with nerd and the scanners stubbed; `stubs` replaces tools.
+ * `base`: catalog files committed before the pull request; `pr(commit)`: files laid over its commit (null removes one). */
+function review(files, stubs = {}, over = {}, { base: before = {}, pr = () => ({}) } = {}) {
   const plugin = catalogRepo([['2026-10-01', { LICENSE: 'MIT License', 'plugin.json': '{}', ...files }]]);
   const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
   execFileSync(realGit, ['-C', plugin, 'tag', 'v1.0.0']);
   const commit = execFileSync(realGit, ['-C', plugin, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const repo = catalogRepo([['2026-10-01', { 'revoked.json': '[]' }], ['2026-10-02', { 'plugins/x.json': entry({ commit, ...over }) }]]);
+  const earlier = typeof before === 'function' ? before(commit) : before;
+  const repo = catalogRepo([['2026-10-01', { 'revoked.json': '[]', ...earlier }], ['2026-10-02', { 'plugins/x.json': entry({ commit, ...over }), ...pr(commit) }]]);
   const base = execFileSync(realGit, ['-C', repo, 'rev-parse', 'HEAD~1'], { encoding: 'utf8' }).trim();
   const bin = tmp('bin');
   const tools = {
@@ -1095,6 +1101,53 @@ test('the review refuses an entry that says it is official', () => {
   assert.deepEqual(review({}, {}, { official: true }), refused);
   assert.deepEqual(review({}, {}, { official: false }), refused);
   assert.deepEqual(review({}), { ok: true, problems: [] });
+});
+
+test("the review sees what a rename removes: another author's entry cannot be renamed away or deleted", () => {
+  // The same bytes under a new name: git would call it a rename and show only the new name.
+  const moved = review({}, {}, {}, { base: (commit) => ({ 'plugins/old.json': entry({ commit }) }), pr: () => ({ 'plugins/old.json': null }) });
+  assert.equal(moved.ok, false);
+  assert.match(moved.problems[0], /adds or changes one plugins\/<name>\.json and nothing else: D\tplugins\/old\.json/);
+  const gone = review({}, {}, {}, { base: (commit) => ({ 'plugins/x.json': entry({ commit }), 'plugins/y.json': entry() }), pr: () => ({ 'plugins/y.json': null }) });
+  assert.equal(gone.ok, false, 'an entry removed, the other unchanged');
+  const updated = review({}, {}, {}, { base: { 'plugins/x.json': entry({ summary: 'before' }) } });
+  assert.deepEqual(updated, { ok: true, problems: [] }, 'an entry changed in place');
+});
+
+test('the review takes title and summary as nerd takes them, and refuses what nerd could not read', () => {
+  const refused = (over, raw) => review({}, {}, over, raw ? { pr: (commit) => ({ 'plugins/x.json': raw(JSON.stringify(entry({ commit, ...over }))) }) } : {});
+  assert.equal(refused({ title: 'Я'.repeat(64) }).ok, true, 'characters, not bytes');
+  assert.equal(refused({ title: 'a'.repeat(65) }).ok, false);
+  assert.equal(refused({ summary: 's'.repeat(201) }).ok, false);
+  for (const c of ['\u0001', '\n', '\u007f', '\u0085']) assert.equal(refused({ title: `a${c}b` }).ok, false, JSON.stringify(c));
+  assert.equal(refused({ title: 'a\u202eb' }).ok, true, 'a format character nerd takes');
+  assert.match(refused({}, (s) => s.replace('{', '{"title":"twice",')).problems[0], /a key appears twice/);
+  assert.match(refused({}, (s) => s.replace('{', '{"risk":{"a":1},')).problems[0], /a key appears twice/, 'the first value a container');
+  for (const risk of ['0e0', '00', '-0']) assert.match(refused({}, (s) => s.replace('"risk":0', `"risk":${risk}`)).problems[0], /risk must be a whole number/, risk);
+  assert.equal(refused({}, (s) => JSON.stringify(JSON.parse(s), null, 2).replace(/"risk": 0,\n/, '').replace(/\n}$/, ',\n  "risk": 0\n}')).ok, true, 'risk as the last key of a laid-out file');
+  assert.match(refused({}, (s) => s.replace('"title":"T"', '"title":"\\ud83d\\ude00"')).problems[0], /escaped surrogates/);
+  assert.equal(refused({}, (s) => s.replace('"title":"T"', '"title":"\\\\ud800"')).ok, true, 'an escaped backslash before u is text');
+  const inTitle = (bytes) => (s) => { const [a, b] = s.split('"title":"T"'); return Buffer.concat([Buffer.from(`${a}"title":"T`), Buffer.from(bytes), Buffer.from(`"${b}`)]); };
+  assert.match(refused({}, inTitle([0xff])).problems[0], /not UTF-8/);
+  assert.equal(refused({}, inTitle([0xf4, 0x90, 0x80, 0x80])).ok, false, 'past U+10FFFF, which iconv lets through');
+  assert.match(refused({}, (s) => Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(s)])).problems[0], /byte-order mark/);
+});
+
+test('a plugin whose clone hangs is cut off by the timeout and shown as unavailable', () => {
+  const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const bin = tmp('slow-git');
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" clone "*) exec sleep 5;; esac\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
+  const root = catalogRepo([['2026-10-01', { 'plugins/slow.json': entry() }]]);
+  const path0 = process.env.PATH;
+  process.env.PATH = `${bin}:${path0}`;
+  const started = Date.now();
+  try {
+    const { data } = catalog(root, null, { nerdRepo, today: '2026-10-05', nerd: null, limits: { clone: 1000, call: 1000 } });
+    assert.deepEqual(data.plugins.map((p) => [p.name, p.unavailable]), [['slow', true]]);
+  } finally {
+    process.env.PATH = path0;
+  }
+  assert.ok(Date.now() - started < 4000, `${Date.now() - started} ms`);
 });
 
 test('the review reads a recording as a recording: long event lines pass, encoded blobs in it do not', () => {

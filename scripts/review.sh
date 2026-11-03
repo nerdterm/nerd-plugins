@@ -11,14 +11,28 @@ for tool in nerd git file gitleaks osv-scanner guarddog yr jq; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
 done
 
-changed=$(git diff --name-only "$base"...HEAD -- 'plugins/*.json')
+# Without rename detection a rename shows as the deletion it is: one entry added or changed, nothing removed.
+status=$(git diff --no-renames --name-status "$base"...HEAD)
 # grep and awk exit 1 for "nothing found"; 2 or more is a check that did not run, and fails the review.
-others=$(git diff --name-only "$base"...HEAD | grep -v '^plugins/[a-z0-9-]*\.json$') || [ $? = 1 ]
-[ -z "$others" ] || { echo "a plugin pull request changes plugins/<name>.json only: $others" >&2; exit 1; }
+others=$(printf '%s\n' "$status" | grep -v -E $'^[AM]\tplugins/[a-z0-9-]+\\.json$') || [ $? = 1 ]
+[ -z "$others" ] || { echo "a plugin pull request adds or changes one plugins/<name>.json and nothing else: $others" >&2; exit 1; }
+changed=$(printf '%s\n' "$status" | cut -f2)
 [ "$(echo "$changed" | grep -c .)" = 1 ] || { echo "one plugin per pull request" >&2; exit 1; }
 
 entry=$changed
 [ -f "$entry" ] && [ ! -L "$entry" ] || { echo "$entry is not a plain file" >&2; exit 1; }
+# What nerd's reader (serde) refuses although jq reads it, so the entry would vanish in nerd: text that is not UTF-8
+# (a BOM included; iconv takes code points past U+10FFFF, caught as U+FFFD below), a key given twice (any value an entry
+# holds is a scalar, so every leaf is a top-level key), an escaped surrogate (stricter than nerd: a valid pair is refused
+# too), a number not written the one way serde reads it.
+iconv -f UTF-8 -t UTF-8 "$entry" >/dev/null 2>&1 || { echo "the entry is not UTF-8" >&2; exit 1; }
+rc=0; LC_ALL=C grep -q $'^\xef\xbb\xbf' "$entry" || rc=$?
+[ "$rc" = 1 ] || { echo "the entry starts with a byte-order mark, or could not be read" >&2; exit 1; }
+keys=$(jq -r --stream 'select(length == 2) | .[0][0]' "$entry")
+[ -z "$(printf '%s\n' "$keys" | sort | uniq -d)" ] || { echo "a key appears twice in the entry" >&2; exit 1; }
+rc=0; LC_ALL=C grep -Eiq '(^|[^\\])(\\\\)*\\ud[89ab]' "$entry" || rc=$?
+[ "$rc" = 1 ] || { echo "write characters as themselves, not as escaped surrogates" >&2; exit 1; }
+LC_ALL=C grep -Eq '"risk"[[:space:]]*:[[:space:]]*(0|[1-9][0-9]*)[[:space:]]*([,}]|$)' "$entry" || { echo "risk must be a whole number written as one" >&2; exit 1; }
 name=$(basename "$entry" .json)
 # the site's own pages under /plugins/ (RESERVED in site/build.mjs): a plugin there would stop the site's build
 case "$name" in all|why|review|add) echo "$name is the name of a page of the site, not free for a plugin" >&2; exit 1 ;; esac
@@ -49,6 +63,10 @@ jq -e 'has("official") | not' "$entry" >/dev/null || { echo "official is derived
 extra=$(jq -r '(keys - ["title","summary","url","tag","commit","version","risk","review","featured"]) | join(", ")' "$entry")
 [ -z "$extra" ] || { echo "unknown keys in the entry: $extra" >&2; exit 1; }
 jq -e '(.title | type) == "string" and (.summary | type) == "string"' "$entry" >/dev/null || { echo "title and summary must be strings" >&2; exit 1; }
+# As nerd's catalog reader takes them: characters, not bytes, and no control characters (C0, DEL, C1); no U+FFFD,
+# which is how jq shows bytes serde refuses.
+jq -e '(.title | length) <= 64 and (.summary | length) <= 200 and ([.title, .summary] | all(explode | all(. >= 32 and (. < 127 or . > 159) and . != 65533)))' "$entry" >/dev/null ||
+  { echo "title at most 64 and summary at most 200 characters, with no control characters" >&2; exit 1; }
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "tag must be v<version>" >&2; exit 1; }
 [ "$(jq -r .review "$entry")" = checked ] || fail "review is set by the review: submit \"checked\""
 [ "$featured" = '[false,null]' ] || [ "$featured" = '[true,true]' ] || fail "featured is true or absent"
