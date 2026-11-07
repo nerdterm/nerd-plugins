@@ -20,7 +20,9 @@ entry=$(gh pr diff "$pr" --repo "$repo" --name-only | grep -E '^plugins/[a-z0-9-
 [ -n "$entry" ] || { echo "the pull request changes no plugins/<name>.json" >&2; exit 1; }
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# bash 3.2 hands an EXIT trap 0 after an unset variable or a failed ${x:?}: only a run that set finished exits 0.
+finished=
+trap 'rc=$?; rm -rf "$work"; [ "$rc" != 0 ] || [ "${finished:-}" = 1 ] || rc=1; exit "$rc"' EXIT
 # Read(~/**) is denied below: a work folder under HOME would hide the plugin itself.
 case "$(cd "$work" && pwd -P)/" in "$(cd ~ && pwd -P)"/*) echo "the temporary folder is under HOME; set TMPDIR outside it" >&2; exit 1 ;; esac
 gh api "repos/$repo/contents/$entry?ref=$head" --jq .content | base64 -d > "$work/entry.json"
@@ -57,3 +59,4 @@ claude -p "$prompt" \
     --allowedTools Read,Grep,Glob \
     --disallowedTools Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task \
     --settings '{"permissions":{"blockReadsOutsideWorkingDirectories":true,"deny":["Read(./.git/**)","Read(~/**)"]}}'
+finished=1

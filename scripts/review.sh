@@ -1,15 +1,20 @@
 #!/bin/bash
 # Reviews the entries a pull request adds or changes; writes result.json. Any failed check fails the run.
-# Usage: scripts/review.sh <base commit> <out dir>
+# Usage: scripts/review.sh <base commit> <out dir> [trial]
+# With `trial`, only fetches the plugin and runs it in nerd's sandbox: its exit is the trial's, and it decides nothing.
 set -euo pipefail
 
 base=$1
 out=$2
+mode=${3:-}
 scripts=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$out"
-for tool in nerd git file gitleaks osv-scanner guarddog yr jq; do
+tools="nerd git file gitleaks osv-scanner guarddog yr jq"
+[ "$mode" != trial ] || tools="nerd git jq"
+for tool in $tools; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
 done
+[ "$mode" = trial ] || [ -n "${PR_AUTHOR:-}" ] || { echo "set PR_AUTHOR to the login of the pull request's author" >&2; exit 1; }
 
 # Without rename detection a rename shows as the deletion it is: one entry added or changed, nothing removed.
 status=$(git diff --no-renames --name-status "$base"...HEAD)
@@ -72,7 +77,9 @@ jq -e '(.title | length) <= 64 and (.summary | length) <= 200 and ([.title, .sum
 [ "$featured" = '[false,null]' ] || [ "$featured" = '[true,true]' ] || fail "featured is true or absent"
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# bash 3.2 hands an EXIT trap 0 after an unset variable or a failed ${x:?}: only a run that set finished exits 0.
+finished=
+trap 'rc=$?; rm -rf "$work"; [ "$rc" != 0 ] || [ "${finished:-}" = 1 ] || rc=1; exit "$rc"' EXIT
 # The plugin is data here: fetched without hooks, filters or the runner's git config, never built.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
 git -c core.hooksPath=/dev/null -c protocol.allow=never -c protocol.https.allow=always -c transfer.fsckObjects=true \
@@ -84,6 +91,12 @@ rm -rf "$work/src/.git"
 # nerd follows a linked manifest; the site and this review read the file itself, so a link is not accepted.
 [ ! -L "$work/src/plugin.json" ] || fail "plugin.json is a symbolic link: commit the manifest itself"
 dir=$work/src
+# What the plugin printed stays on the runner: it can read the runner's files.
+if [ "$mode" = trial ]; then
+  nerd --plugin-trial "$dir" > "$work/trial.txt" 2>&1 || { echo "the trial run did not connect or did not keep running" >&2; exit 1; }
+  finished=1
+  exit 0
+fi
 # The site shows demo.cast as site/build.mjs reads it: one header, asciicast v2 or v3 with a whole-number size, then
 # events [time >= 0, string, string], v2's times never going back (v3's are intervals and may have # comment lines).
 if [ -L "$dir/demo.cast" ]; then
@@ -178,17 +191,29 @@ else
   fail "yara did not run"
 fi
 
-nerd --plugin-trial "$dir" > "$work/trial.txt" 2>&1 || fail "the trial run did not connect or did not keep running"
-
 rise=false
 [ "$previous" = none ] || [ "$risk" -le "$previous" ] || rise=true
 # Another address is another plugin, whatever its risk level.
 [ "$previous_url" = none ] || [ "$previous_url" = "$url" ] || rise=true
+# An entry, new or changed, is automatic only when the owner of the repository it names asks: the listed url when there is
+# one, else the new one; an organisation never opens a pull request.
+lower() { printf %s "$1" | tr '[:upper:]' '[:lower:]'; }
+owned=$previous_url
+[ "$owned" != none ] || owned=$url
+owned=${owned#https://github.com/}
+stranger=false
+[ "$(lower "$PR_AUTHOR")" = "$(lower "${owned%%/*}")" ] || stranger=true
+# A commit the catalog has revoked goes to the maintainer, whoever asks. The list is the base's: a pull request's own copy
+# is the one from when it branched.
+rc=0; git show "$base:revoked.json" | jq -e --arg c "$commit" 'if type == "array" then any(.[]; .commit == $c) else error("not an array") end' >/dev/null 2>&1 || rc=$?
+revoked=false
+case $rc in 0) revoked=true ;; 1) ;; *) fail "revoked.json could not be read" ;; esac
 auto=false
-[ ${#problems[@]} -eq 0 ] && [ "$risk" = 0 ] && [ "$rise" = false ] && [ "$featured_changed" = false ] && auto=true
+[ ${#problems[@]} -eq 0 ] && [ "$risk" = 0 ] && [ "$rise" = false ] && [ "$featured_changed" = false ] && [ "$stranger" = false ] && [ "$revoked" = false ] && auto=true
 jq -n --arg name "$name" --argjson risk "$risk" --arg previous "$previous" --argjson auto "$auto" --argjson rise "$rise" \
-  --argjson featured_changed "$featured_changed" \
-  '{name: $name, risk: $risk, previous: $previous, rise: $rise, featured_changed: $featured_changed, auto: $auto, problems: $ARGS.positional}' \
+  --argjson featured_changed "$featured_changed" --argjson stranger "$stranger" --argjson revoked "$revoked" \
+  '{name: $name, risk: $risk, previous: $previous, rise: $rise, featured_changed: $featured_changed, stranger: $stranger, revoked: $revoked, auto: $auto, problems: $ARGS.positional}' \
   --args "${problems[@]+"${problems[@]}"}" > "$out/result.json"
 cat "$out/result.json"
+finished=1
 [ ${#problems[@]} -eq 0 ]

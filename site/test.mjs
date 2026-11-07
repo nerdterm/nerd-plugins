@@ -1053,15 +1053,28 @@ test('the page asks for each of its files by a fingerprint of its content', () =
 });
 
 /** Runs scripts/review.sh on a plugin made of `files`, with nerd and the scanners stubbed; `stubs` replaces tools.
- * `base`: catalog files committed before the pull request; `pr(commit)`: files laid over its commit (null removes one). */
-function review(files, stubs = {}, over = {}, { base: before = {}, pr = () => ({}) } = {}) {
+ * `base`: catalog files committed before the pull request; `pr(commit)`: files laid over its commit (null removes one);
+ * `later(commit)`: files the base branch commits after the pull request branched (null removes one), and that commit is the base;
+ * `author`: the pull request's author (null: none given); `trial`: the trial alone; `patch`: rewrites the script.
+ * The whole result.json is `result`, left out of comparisons. */
+function review(files, stubs = {}, over = {}, { base: before = {}, pr = () => ({}), later = null, author = 'someone', trial = false, patch = null, env: extraEnv = {} } = {}) {
   const plugin = catalogRepo([['2026-10-01', { LICENSE: 'MIT License', 'plugin.json': '{}', ...files }]]);
   const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
   execFileSync(realGit, ['-C', plugin, 'tag', 'v1.0.0']);
   const commit = execFileSync(realGit, ['-C', plugin, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const earlier = typeof before === 'function' ? before(commit) : before;
   const repo = catalogRepo([['2026-10-01', { 'revoked.json': '[]', ...earlier }], ['2026-10-02', { 'plugins/x.json': entry({ commit, ...over }), ...pr(commit) }]]);
-  const base = execFileSync(realGit, ['-C', repo, 'rev-parse', 'HEAD~1'], { encoding: 'utf8' }).trim();
+  let base = execFileSync(realGit, ['-C', repo, 'rev-parse', 'HEAD~1'], { encoding: 'utf8' }).trim();
+  if (later) {
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' };
+    const git = (...a) => execFileSync(realGit, ['-C', repo, ...a], { env, encoding: 'utf8' }).trim();
+    git('checkout', '--quiet', '-b', 'base', base);
+    for (const [f, v] of Object.entries(later(commit))) v === null ? fs.rmSync(path.join(repo, f)) : fs.writeFileSync(path.join(repo, f), v);
+    git('add', '-A');
+    git('commit', '--quiet', '-m', 'later');
+    base = git('rev-parse', 'HEAD');
+    git('checkout', '--quiet', 'main');
+  }
   const bin = tmp('bin');
   const tools = {
     git: `case " $* " in *" clone "*) for a; do d=$a; done; exec "${realGit}" clone --quiet --no-checkout "${plugin}" "$d";; esac; exec "${realGit}" "$@"`,
@@ -1070,19 +1083,29 @@ function review(files, stubs = {}, over = {}, { base: before = {}, pr = () => ({
   };
   for (const [name, body] of Object.entries(tools)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   const out = tmp('out');
-  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'review.sh');
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, YARA_RULES: '/dev/null' };
+  const scripts = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+  let script = path.join(scripts, 'review.sh');
+  if (patch) {
+    const copy = tmp('scripts');
+    fs.copyFileSync(path.join(scripts, 'lines.awk'), path.join(copy, 'lines.awk'));
+    const src = fs.readFileSync(script, 'utf8');
+    assert.notEqual(patch(src), src, 'the patch applies');
+    script = path.join(copy, 'review.sh');
+    fs.writeFileSync(script, patch(src), { mode: 0o755 });
+  }
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, YARA_RULES: '/dev/null', ...(author === null ? {} : { PR_AUTHOR: author }), ...extraEnv };
   let ok = true;
   let stderr = '';
-  try { execFileSync(script, [base, out], { cwd: repo, env, stdio: ['ignore', 'ignore', 'pipe'] }); } catch (err) { ok = false; stderr = String(err.stderr); }
-  // an entry refused before the plugin is fetched leaves no result.json, only its reason
+  try { execFileSync(script, [base, out, ...(trial ? ['trial'] : [])], { cwd: repo, env, stdio: ['ignore', 'ignore', 'pipe'] }); } catch (err) { ok = false; stderr = String(err.stderr); }
+  // an entry refused before the plugin is fetched, and the trial, leave no result.json, only a reason
   const result = path.join(out, 'result.json');
-  return { ok, problems: fs.existsSync(result) ? JSON.parse(fs.readFileSync(result, 'utf8')).problems : [stderr.trim()] };
+  const r = fs.existsSync(result) ? JSON.parse(fs.readFileSync(result, 'utf8')) : { problems: [stderr.trim()], auto: false };
+  return Object.defineProperty({ ok, problems: r.problems, auto: r.auto }, 'result', { value: r });
 }
 
 test('the review catches a long encoded blob and fails when a check cannot run', () => {
   const b64 = (n) => Buffer.from('x'.repeat(n)).toString('base64').slice(0, n);
-  assert.deepEqual(review({ 'a.sh': 'echo hi\n' }), { ok: true, problems: [] });
+  assert.deepEqual(review({ 'a.sh': 'echo hi\n' }), { ok: true, problems: [], auto: true });
   assert.deepEqual(review({ 'a.sh': `x=${b64(600)}\n` }).problems, ['a.sh holds a long encoded blob'], 'one line of base64');
   assert.deepEqual(review({ 'a.sh': `x=${'0123456789abcdef'.repeat(30)}\n` }).problems, ['a.sh holds a long encoded blob'], 'hex');
   assert.deepEqual(review({ 'a.sh': `x="\n${`${b64(76)}\n`.repeat(8)}"\n` }).problems, ['a.sh holds a long encoded blob'], 'wrapped');
@@ -1097,10 +1120,10 @@ test('the review catches a long encoded blob and fails when a check cannot run',
 });
 
 test('the review refuses an entry that says it is official', () => {
-  const refused = { ok: false, problems: ['official is derived by the site, never set in an entry'] };
+  const refused = { ok: false, problems: ['official is derived by the site, never set in an entry'], auto: false };
   assert.deepEqual(review({}, {}, { official: true }), refused);
   assert.deepEqual(review({}, {}, { official: false }), refused);
-  assert.deepEqual(review({}), { ok: true, problems: [] });
+  assert.deepEqual(review({}), { ok: true, problems: [], auto: true });
 });
 
 test("the review sees what a rename removes: another author's entry cannot be renamed away or deleted", () => {
@@ -1111,7 +1134,7 @@ test("the review sees what a rename removes: another author's entry cannot be re
   const gone = review({}, {}, {}, { base: (commit) => ({ 'plugins/x.json': entry({ commit }), 'plugins/y.json': entry() }), pr: () => ({ 'plugins/y.json': null }) });
   assert.equal(gone.ok, false, 'an entry removed, the other unchanged');
   const updated = review({}, {}, {}, { base: { 'plugins/x.json': entry({ summary: 'before' }) } });
-  assert.deepEqual(updated, { ok: true, problems: [] }, 'an entry changed in place');
+  assert.deepEqual(updated, { ok: true, problems: [], auto: true }, 'an entry changed in place');
 });
 
 test('the review takes title and summary as nerd takes them, and refuses what nerd could not read', () => {
@@ -1153,8 +1176,57 @@ test('a plugin whose clone hangs is cut off by the timeout and shown as unavaila
 test('the review reads a recording as a recording: long event lines pass, encoded blobs in it do not', () => {
   const peek = fs.readFileSync(path.join(fixtures, 'review', 'peek.cast'), 'utf8');
   assert.ok(peek.split('\n').some((l) => l.length > 1000), 'the fixture has the long lines that were refused');
-  assert.deepEqual(review({ 'demo.cast': peek }), { ok: true, problems: [] });
+  assert.deepEqual(review({ 'demo.cast': peek }), { ok: true, problems: [], auto: true });
   assert.deepEqual(review({ 'docs/demo.cast': peek }).problems, ['docs/demo.cast has a line over 1000 characters: minified or obfuscated code is not accepted'], 'only the recording the site shows');
   const blob = `${peek.split('\n')[0]}\n[0.1,"o","${Buffer.from('x'.repeat(600)).toString('base64')}"]\n`;
   assert.deepEqual(review({ 'demo.cast': blob }).problems, ['demo.cast holds a long encoded blob']);
+});
+
+test("a change to a listed entry is automatic only from the owner of the entry's repository", () => {
+  const listed = (url, author) => review({}, {}, { url }, { base: { 'plugins/x.json': entry({ url, summary: 'before' }) }, author });
+  assert.equal(listed('https://github.com/someone/x', 'someone').auto, true);
+  assert.equal(listed('https://github.com/someone/x', 'SomeOne').auto, true, 'a login in any case');
+  const stranger = listed('https://github.com/someone/x', 'stranger');
+  assert.deepEqual([stranger.ok, stranger.auto], [true, false], 'checked, then left to the maintainer');
+  assert.equal(listed('https://github.com/nerdterm/x', 'someone').auto, false, "an organisation's entry always waits");
+  assert.equal(review({}, {}, {}, { author: 'stranger' }).auto, false, "a stranger's new entry for someone else's repository");
+  assert.equal(review({}, {}, {}, { author: 'someone' }).auto, true, "the repository owner's own new entry");
+  assert.match(review({}, {}, {}, { author: null }).problems[0], /PR_AUTHOR/, 'no author, no decision');
+});
+
+test('a url change goes to the maintainer, from either author', () => {
+  const moved = (author) => review({}, {}, { url: 'https://github.com/other/x' }, { base: { 'plugins/x.json': entry() }, author });
+  for (const author of ['someone', 'other']) assert.deepEqual([moved(author).ok, moved(author).auto], [true, false], author);
+});
+
+test('a commit the catalog has revoked is never automatic', () => {
+  const run = (commit) => review({}, {}, {}, { base: (c) => ({ 'revoked.json': JSON.stringify([{ name: 'x', commit: commit || c, level: 'hard', why: 'w' }]) }) });
+  assert.deepEqual([run().ok, run().auto], [true, false]);
+  assert.equal(run('f'.repeat(40)).auto, true, 'another commit');
+  const revokedSince = review({}, {}, {}, { later: (c) => ({ 'revoked.json': JSON.stringify([{ name: 'x', commit: c, level: 'hard', why: 'w' }]) }) });
+  assert.deepEqual([revokedSince.ok, revokedSince.result.revoked, revokedSince.auto], [true, true, false], 'revoked on the base after the pull request branched');
+});
+
+test('a review whose base has no readable revoked.json fails', () => {
+  for (const later of [() => ({ 'revoked.json': null }), () => ({ 'revoked.json': '{}' }), () => ({ 'revoked.json': '[' })]) {
+    const r = review({}, {}, {}, { later });
+    assert.deepEqual([r.ok, r.problems], [false, ['revoked.json could not be read']], String(later()['revoked.json']));
+  }
+});
+
+test('a review that stops on a shell error fails, whatever its cleanup does', () => {
+  // macOS bash 3.2 lets an EXIT trap's last command set the status after an unset variable or a failed ${x:?}.
+  const broken = review({}, {}, {}, { patch: (s) => s.replace(/^trap .*$/m, (t) => `${t}\n: "$UNSET_ON_PURPOSE"`) });
+  assert.equal(broken.ok, false);
+  assert.match(broken.problems[0], /UNSET_ON_PURPOSE: unbound variable/);
+  const inherited = review({}, {}, {}, { patch: (s) => s.replace(/^trap .*$/m, (t) => `${t}\n: "$UNSET_ON_PURPOSE"`), env: { finished: '1' } });
+  assert.equal(inherited.ok, false, 'an inherited finished=1 does not make it a finished run');
+});
+
+test('the review decides without running the plugin, and the trial runs it alone', () => {
+  const trialFails = { nerd: `case "$1" in --plugin-check) echo '{"name":"x","version":"1.0.0","risk":0,"problems":[]}';; --plugin-trial) exit 1;; esac` };
+  assert.deepEqual(review({}, trialFails), { ok: true, problems: [], auto: true }, 'the review never starts the trial');
+  assert.deepEqual(review({}, trialFails, {}, { trial: true }), { ok: false, problems: ['the trial run did not connect or did not keep running'], auto: false });
+  const scannersFail = { gitleaks: 'exit 1', 'osv-scanner': 'exit 1', yr: 'exit 1' };
+  assert.equal(review({}, scannersFail, {}, { trial: true, author: null }).ok, true, 'the trial runs no scanner and needs no author');
 });
