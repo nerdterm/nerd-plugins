@@ -1,24 +1,43 @@
 #!/bin/bash
 # Reviews the entries a pull request adds or changes; writes result.json. Any failed check fails the run.
-# Usage: scripts/review.sh <base commit> <out dir>
+# Usage: scripts/review.sh <base commit> <out dir> [trial]
+# With `trial`, only fetches the plugin and runs it in nerd's sandbox: its exit is the trial's, and it decides nothing.
 set -euo pipefail
 
 base=$1
 out=$2
+mode=${3:-}
 scripts=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$out"
-for tool in nerd git file gitleaks osv-scanner guarddog yr jq; do
+tools="nerd git file gitleaks osv-scanner guarddog yr jq"
+[ "$mode" != trial ] || tools="nerd git jq"
+for tool in $tools; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
 done
+[ "$mode" = trial ] || [ -n "${PR_AUTHOR:-}" ] || { echo "set PR_AUTHOR to the login of the pull request's author" >&2; exit 1; }
 
-changed=$(git diff --name-only "$base"...HEAD -- 'plugins/*.json')
+# Without rename detection a rename shows as the deletion it is: one entry added or changed, nothing removed.
+status=$(git diff --no-renames --name-status "$base"...HEAD)
 # grep and awk exit 1 for "nothing found"; 2 or more is a check that did not run, and fails the review.
-others=$(git diff --name-only "$base"...HEAD | grep -v '^plugins/[a-z0-9-]*\.json$') || [ $? = 1 ]
-[ -z "$others" ] || { echo "a plugin pull request changes plugins/<name>.json only: $others" >&2; exit 1; }
+others=$(printf '%s\n' "$status" | grep -v -E $'^[AM]\tplugins/[a-z0-9-]+\\.json$') || [ $? = 1 ]
+[ -z "$others" ] || { echo "a plugin pull request adds or changes one plugins/<name>.json and nothing else: $others" >&2; exit 1; }
+changed=$(printf '%s\n' "$status" | cut -f2)
 [ "$(echo "$changed" | grep -c .)" = 1 ] || { echo "one plugin per pull request" >&2; exit 1; }
 
 entry=$changed
 [ -f "$entry" ] && [ ! -L "$entry" ] || { echo "$entry is not a plain file" >&2; exit 1; }
+# What nerd's reader (serde) refuses although jq reads it, so the entry would vanish in nerd: text that is not UTF-8
+# (a BOM included; iconv takes code points past U+10FFFF, caught as U+FFFD below), a key given twice (any value an entry
+# holds is a scalar, so every leaf is a top-level key), an escaped surrogate (stricter than nerd: a valid pair is refused
+# too), a number not written the one way serde reads it.
+iconv -f UTF-8 -t UTF-8 "$entry" >/dev/null 2>&1 || { echo "the entry is not UTF-8" >&2; exit 1; }
+rc=0; LC_ALL=C grep -q $'^\xef\xbb\xbf' "$entry" || rc=$?
+[ "$rc" = 1 ] || { echo "the entry starts with a byte-order mark, or could not be read" >&2; exit 1; }
+keys=$(jq -r --stream 'select(length == 2) | .[0][0]' "$entry")
+[ -z "$(printf '%s\n' "$keys" | sort | uniq -d)" ] || { echo "a key appears twice in the entry" >&2; exit 1; }
+rc=0; LC_ALL=C grep -Eiq '(^|[^\\])(\\\\)*\\ud[89ab]' "$entry" || rc=$?
+[ "$rc" = 1 ] || { echo "write characters as themselves, not as escaped surrogates" >&2; exit 1; }
+LC_ALL=C grep -Eq '"risk"[[:space:]]*:[[:space:]]*(0|[1-9][0-9]*)[[:space:]]*([,}]|$)' "$entry" || { echo "risk must be a whole number written as one" >&2; exit 1; }
 name=$(basename "$entry" .json)
 # the site's own pages under /plugins/ (RESERVED in site/build.mjs): a plugin there would stop the site's build
 case "$name" in all|why|review|add) echo "$name is the name of a page of the site, not free for a plugin" >&2; exit 1 ;; esac
@@ -49,12 +68,18 @@ jq -e 'has("official") | not' "$entry" >/dev/null || { echo "official is derived
 extra=$(jq -r '(keys - ["title","summary","url","tag","commit","version","risk","review","featured"]) | join(", ")' "$entry")
 [ -z "$extra" ] || { echo "unknown keys in the entry: $extra" >&2; exit 1; }
 jq -e '(.title | type) == "string" and (.summary | type) == "string"' "$entry" >/dev/null || { echo "title and summary must be strings" >&2; exit 1; }
+# As nerd's catalog reader takes them: characters, not bytes, and no control characters (C0, DEL, C1); no U+FFFD,
+# which is how jq shows bytes serde refuses.
+jq -e '(.title | length) <= 64 and (.summary | length) <= 200 and ([.title, .summary] | all(explode | all(. >= 32 and (. < 127 or . > 159) and . != 65533)))' "$entry" >/dev/null ||
+  { echo "title at most 64 and summary at most 200 characters, with no control characters" >&2; exit 1; }
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "tag must be v<version>" >&2; exit 1; }
 [ "$(jq -r .review "$entry")" = checked ] || fail "review is set by the review: submit \"checked\""
 [ "$featured" = '[false,null]' ] || [ "$featured" = '[true,true]' ] || fail "featured is true or absent"
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# bash 3.2 hands an EXIT trap 0 after an unset variable or a failed ${x:?}: only a run that set finished exits 0.
+finished=
+trap 'rc=$?; rm -rf "$work"; [ "$rc" != 0 ] || [ "${finished:-}" = 1 ] || rc=1; exit "$rc"' EXIT
 # The plugin is data here: fetched without hooks, filters or the runner's git config, never built.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
 git -c core.hooksPath=/dev/null -c protocol.allow=never -c protocol.https.allow=always -c transfer.fsckObjects=true \
@@ -66,6 +91,12 @@ rm -rf "$work/src/.git"
 # nerd follows a linked manifest; the site and this review read the file itself, so a link is not accepted.
 [ ! -L "$work/src/plugin.json" ] || fail "plugin.json is a symbolic link: commit the manifest itself"
 dir=$work/src
+# What the plugin printed stays on the runner: it can read the runner's files.
+if [ "$mode" = trial ]; then
+  nerd --plugin-trial "$dir" > "$work/trial.txt" 2>&1 || { echo "the trial run did not connect or did not keep running" >&2; exit 1; }
+  finished=1
+  exit 0
+fi
 # The site shows demo.cast as site/build.mjs reads it: one header, asciicast v2 or v3 with a whole-number size, then
 # events [time >= 0, string, string], v2's times never going back (v3's are intervals and may have # comment lines).
 if [ -L "$dir/demo.cast" ]; then
@@ -160,17 +191,29 @@ else
   fail "yara did not run"
 fi
 
-nerd --plugin-trial "$dir" > "$work/trial.txt" 2>&1 || fail "the trial run did not connect or did not keep running"
-
 rise=false
 [ "$previous" = none ] || [ "$risk" -le "$previous" ] || rise=true
 # Another address is another plugin, whatever its risk level.
 [ "$previous_url" = none ] || [ "$previous_url" = "$url" ] || rise=true
+# An entry, new or changed, is automatic only when the owner of the repository it names asks: the listed url when there is
+# one, else the new one; an organisation never opens a pull request.
+lower() { printf %s "$1" | tr '[:upper:]' '[:lower:]'; }
+owned=$previous_url
+[ "$owned" != none ] || owned=$url
+owned=${owned#https://github.com/}
+stranger=false
+[ "$(lower "$PR_AUTHOR")" = "$(lower "${owned%%/*}")" ] || stranger=true
+# A commit the catalog has revoked goes to the maintainer, whoever asks. The list is the base's: a pull request's own copy
+# is the one from when it branched.
+rc=0; git show "$base:revoked.json" | jq -e --arg c "$commit" 'if type == "array" then any(.[]; .commit == $c) else error("not an array") end' >/dev/null 2>&1 || rc=$?
+revoked=false
+case $rc in 0) revoked=true ;; 1) ;; *) fail "revoked.json could not be read" ;; esac
 auto=false
-[ ${#problems[@]} -eq 0 ] && [ "$risk" = 0 ] && [ "$rise" = false ] && [ "$featured_changed" = false ] && auto=true
+[ ${#problems[@]} -eq 0 ] && [ "$risk" = 0 ] && [ "$rise" = false ] && [ "$featured_changed" = false ] && [ "$stranger" = false ] && [ "$revoked" = false ] && auto=true
 jq -n --arg name "$name" --argjson risk "$risk" --arg previous "$previous" --argjson auto "$auto" --argjson rise "$rise" \
-  --argjson featured_changed "$featured_changed" \
-  '{name: $name, risk: $risk, previous: $previous, rise: $rise, featured_changed: $featured_changed, auto: $auto, problems: $ARGS.positional}' \
+  --argjson featured_changed "$featured_changed" --argjson stranger "$stranger" --argjson revoked "$revoked" \
+  '{name: $name, risk: $risk, previous: $previous, rise: $rise, featured_changed: $featured_changed, stranger: $stranger, revoked: $revoked, auto: $auto, problems: $ARGS.positional}' \
   --args "${problems[@]+"${problems[@]}"}" > "$out/result.json"
 cat "$out/result.json"
+finished=1
 [ ${#problems[@]} -eq 0 ]

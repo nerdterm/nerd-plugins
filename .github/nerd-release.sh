@@ -7,7 +7,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag of nerd: $tag" >&2; exit 1; }
 a=nerd-$tag-macos-arm64.tar.gz
 d=$(mktemp -d)
-trap 'rm -rf "$d"' EXIT
+# bash 3.2 hands an EXIT trap 0 after an unset variable or a failed ${x:?}: only a run that set finished exits 0.
+finished=
+trap 'rc=$?; rm -rf "$d"; [ "$rc" != 0 ] || [ "${finished:-}" = 1 ] || rc=1; exit "$rc"' EXIT
 for n in "$a" "$a.sha256" "$a.sha256.sig"; do
     curl -fsSL --retry 3 -o "$d/$n" "https://github.com/nerdterm/nerd/releases/download/$tag/$n"
 done
@@ -22,3 +24,4 @@ done
 tar -xzf "$d/$a" -C "$d" nerd
 install -m 755 "$d/nerd" "$out/nerd"
 echo "nerd $tag: signature and checksum checked, installed in $out"
+finished=1

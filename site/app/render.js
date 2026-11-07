@@ -336,7 +336,7 @@
         ${step(4, 'The decision', '<p>The risk level decides who looks next.</p>')}
         </div>
         <div class="two">
-          <div class="frame chk"><h3 class="t">checked</h3><div class="body prose"><p>The plugin is at level 0, it only shows things. Every check passed and its level did not rise. It is labelled automatically; nobody read the code.</p></div></div>
+          <div class="frame chk"><h3 class="t">checked</h3><div class="body prose"><p>The plugin is at level 0, it only shows things. Every check passed and its level did not rise. It is labelled automatically; nobody read the code. A pull request, an entry’s change or a new entry, qualifies only when it comes from the GitHub account that owns the repository its url names, so an organisation’s plugin always goes to the maintainer.</p></div></div>
           <div class="frame rev"><h3 class="t">reviewed</h3><div class="body prose"><p>Everything else: a plugin that writes files, reaches the network or hooks into an agent, or whose level rose. The catalog maintainer reads it and approves it by hand. The maintainer may ask for an AI analysis; it can only add findings and cannot approve anything.</p></div></div>
         </div>
         <div class="prose">${step(5, 'After it is listed', '<p>Each new release goes through the same pipeline again. A release can be revoked: a hard revocation makes nerd turn the plugin off until it is updated or removed, a soft one warns the people who have it.</p>')}</div>`, { cls: 'fill primary', r: 'review' });

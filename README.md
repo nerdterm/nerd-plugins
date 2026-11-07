@@ -76,15 +76,17 @@ Every pull request is checked by CI, and a failed check stops it:
 
 The checks run with no token and no secrets, from this repository's own scripts, never the pull request's. Each run
 waits for the maintainer's approval in the `catalog-review` environment before it starts, because it runs the plugin on
-a GitHub-hosted macOS runner. A separate job, which runs nothing of the pull request, sets the labels, and only for the
-commit that was reviewed.
+a GitHub-hosted macOS runner. The plugin runs in a job of its own, which hands on nothing but whether it passed; the
+checks decide in another job, which runs none of the plugin. A separate job, which runs nothing of the pull request,
+sets the labels, and only for the commit that was reviewed.
 
 ## The review machine
 
-The review job runs on GitHub's macOS runner (`macos-15`, Apple Silicon), a fresh machine for every run that is
-thrown away after it. The job installs its tools itself and stops when a download's checksum differs:
+The review and the trial run on GitHub's macOS runner (`macos-15`, Apple Silicon), each on a fresh machine that is
+thrown away after it. Each installs its tools itself (the trial only `nerd` and jq) and stops when a download's
+checksum differs:
 
-- `nerd`: the latest release, checked against the `.sha256` published with it;
+- `nerd`: the latest release, its signature checked against the release keys pinned on the base branch;
 - Gitleaks 8.30.1, OSV-Scanner 2.6.0, jq 1.8.2 and YARA-X 1.21.0 (`yr`; YARA publishes no macOS build), the release
   binaries, each checked against a SHA-256 written in `.github/workflows/review.yml`;
 - the YARA Forge core rules, release 20260927, checked the same way;
@@ -98,7 +100,10 @@ on to fail closed.
 Risk levels come from the manifest: 0 only shows things, 1 writes files, 2 reaches the network (this Mac's
 services with `"network": "localhost"`, or the hosts and ports the manifest names, which the site and nerd list in
 words), 3 hooks into an agent. A pull request at level 0 whose checks pass, and whose level did not rise, is labelled `auto-approve` and gets
-the mark **checked**. Every other one is labelled `needs-maintainer`: the maintainer reads it and, on approval, it gets the
+the mark **checked**. A pull request (an entry's change or a new entry) qualifies only when its author is the GitHub
+user who owns the repository its `url` names, so an organisation's plugin always waits for the maintainer, and so does
+a commit listed in `revoked.json`. The owner is the login in the `url`: a login freed by a rename can be taken by someone else.
+Every other one is labelled `needs-maintainer`: the maintainer reads it and, on approval, it gets the
 mark **reviewed**. The maintainer may add an AI analysis on their own machine with `scripts/deep-review.sh <pull request>`: it
 reads the plugin at the pinned commit as data, with read-only tools, a fixed model, a turn limit and a spending cap,
 and prints a report. It only adds findings and cannot approve anything; the maintainer decides what to post.
@@ -109,7 +114,7 @@ and prints a report. It only adds findings and cannot approve anything; the main
 and after every merge, with this repository's own `scripts/stars.sh`, and commits the file only when a count changed;
 a repository GitHub does not answer for is skipped, not fatal.
 nerd shows them in its Plugins window after Refresh catalog, and the site on each page; neither asks GitHub itself. The
-workflow pushes to `main`, so the branch ruleset lets GitHub Actions bypass it.
+count reaches `main` as a pull request of its own that the workflow merges.
 
 ## Revoking a release
 
@@ -161,8 +166,8 @@ over 4 MB, is not shown, and the page says why.
 `.github/workflows/pages.yml` publishes nerdterm.dev on GitHub Pages on every push to `main`, daily at 04:47 UTC after
 the `stars` workflow has counted (its own push starts no workflow), and when the maintainer runs it by hand. It
 builds on GitHub's macOS runner (`macos-15`), because the build needs nerd, from nerd's latest release tag rather than
-its `master`, so the pages about nerd say what the released nerd does. The job installs that release itself, checked
-against the `.sha256` published with it, and stops when the installed nerd is not that release; a new nerd release
+its `master`, so the pages about nerd say what the released nerd does. The job installs that release itself, its
+signature checked against the pinned release keys, and stops when the installed nerd is not that release; a new nerd release
 reaches the site with the next run. `git`, `node` and `gtar` (GNU tar, which `actions/upload-pages-artifact` uses on
 macOS) are the runner's. The deploy job runs on a GitHub-hosted Linux runner with only
 `pages: write` and `id-token: write`; the repository's Pages source is GitHub Actions.

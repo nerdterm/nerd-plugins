@@ -2,11 +2,16 @@
 # The maintainer's optional AI read of a plugin pull request, run on their own machine; prints the report.
 # Usage: scripts/deep-review.sh <pull request number> [> report.md]
 # DEEP_REVIEW_MODEL (default opus), DEEP_REVIEW_TURNS (default 40) and DEEP_REVIEW_BUDGET_USD (default 5) bound a run.
+# The report is not scanned for secrets: it reaches only this terminal, and the read fence below was shown to hold.
 set -euo pipefail
 
 pr=$1
 repo=nerdterm/nerd-plugins
 [[ "$pr" =~ ^[0-9]+$ ]] || { echo "usage: $0 <pull request number>" >&2; exit 2; }
+# The read fence is a setting Claude Code 2.1.257 and later knows; an older claude would ignore it without a word.
+IFS=. read -r major minor patch <<<"$(claude --version 2>/dev/null | awk '{ print $1 }')" || true
+[[ "${major:-}.${minor:-}.${patch:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && (( major * 1000000 + minor * 1000 + patch >= 2001257 )) ||
+  { echo "deep-review needs Claude Code 2.1.257 or later" >&2; exit 1; }
 
 # The head is pinned once, so a push during the run changes nothing that is read.
 head=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid)
@@ -15,16 +20,23 @@ entry=$(gh pr diff "$pr" --repo "$repo" --name-only | grep -E '^plugins/[a-z0-9-
 [ -n "$entry" ] || { echo "the pull request changes no plugins/<name>.json" >&2; exit 1; }
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# bash 3.2 hands an EXIT trap 0 after an unset variable or a failed ${x:?}: only a run that set finished exits 0.
+finished=
+trap 'rc=$?; rm -rf "$work"; [ "$rc" != 0 ] || [ "${finished:-}" = 1 ] || rc=1; exit "$rc"' EXIT
+# Read(~/**) is denied below: a work folder under HOME would hide the plugin itself.
+case "$(cd "$work" && pwd -P)/" in "$(cd ~ && pwd -P)"/*) echo "the temporary folder is under HOME; set TMPDIR outside it" >&2; exit 1 ;; esac
 gh api "repos/$repo/contents/$entry?ref=$head" --jq .content | base64 -d > "$work/entry.json"
 url=$(jq -r .url "$work/entry.json")
 commit=$(jq -r .commit "$work/entry.json")
-[[ "$url" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~-]+)+$ ]] || { echo "not a plain https address" >&2; exit 1; }
+# As review.sh accepts it: a public GitHub repository, nothing else is fetched.
+name=${url%.git}
+[[ "$url" =~ ^https://github\.com/[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$ ]] && [[ "${name##*/}" != . && "${name##*/}" != .. && -n "${name##*/}" ]] ||
+  { echo "the url must be https://github.com/<owner>/<repo>" >&2; exit 1; }
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "not a commit" >&2; exit 1; }
 
 # The plugin is a stranger's data: no hooks, no other protocols, no history, no links out of the folder.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
-git -c core.hooksPath=/dev/null -c protocol.allow=never -c protocol.https.allow=always clone --quiet --no-checkout -- "$url" "$work/plugin"
+git -c core.hooksPath=/dev/null -c protocol.allow=never -c protocol.https.allow=always -c transfer.fsckObjects=true clone --quiet --no-checkout -- "$url" "$work/plugin"
 git -C "$work/plugin" -c core.hooksPath=/dev/null checkout --quiet --detach "$commit"
 rm -rf "$work/plugin/.git"
 find "$work/plugin" -type l -delete
@@ -33,7 +45,8 @@ prompt="You review a plugin for nerd, a terminal multiplexer, before it enters a
 
 echo "AI analysis of pull request #$pr at $head, plugin commit $commit. It only adds findings and approves nothing."
 echo
-# Read-only tools, no settings, hooks or MCP servers of this machine, reads outside the folder blocked.
+# Only the three read-only tools exist in the run (--tools; tools that need no permission are otherwise there too),
+# no settings, hooks or MCP servers of this machine, reads outside the folder blocked.
 cd "$work"
 claude -p "$prompt" \
     --model "${DEEP_REVIEW_MODEL:-opus}" \
@@ -42,6 +55,8 @@ claude -p "$prompt" \
     --setting-sources "" \
     --strict-mcp-config \
     --permission-mode dontAsk \
+    --tools Read,Grep,Glob \
     --allowedTools Read,Grep,Glob \
     --disallowedTools Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task \
-    --settings '{"blockReadsOutsideWorkingDirectories":true,"permissions":{"deny":["Read(./.git/**)"]}}'
+    --settings '{"permissions":{"blockReadsOutsideWorkingDirectories":true,"deny":["Read(./.git/**)","Read(~/**)"]}}'
+finished=1

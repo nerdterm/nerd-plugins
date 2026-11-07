@@ -101,6 +101,7 @@ jobs:
         working-directory: pr
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           YARA_RULES: ${{ runner.temp }}/yara-forge/packages/core/yara-rules-core.yar
         run: |
           rm -rf ../out
@@ -120,9 +121,55 @@ jobs:
             out/check.json
           retention-days: 30
 
+  trial:
+    # The only job that runs the plugin, so it hands on nothing but whether it passed: the review decided without it.
+    needs: hold
+    environment: catalog-review
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: the trial, from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+      - name: nerd's latest release, its signature checked against the release keys pinned on the base branch, and jq
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/dl" && cd "$RUNNER_TEMP/dl"
+          tag=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/nerdterm/nerd/releases/latest)
+          tag=${tag##*/}
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no latest release of nerd: $tag" >&2; exit 1; }
+          bash "$GITHUB_WORKSPACE/trusted/.github/nerd-release.sh" "$tag" "$RUNNER_TEMP/bin"
+          case "$("$RUNNER_TEMP/bin/nerd" --version)" in
+            "nerd ${tag#v} "*) ;;
+            *) echo "the installed nerd is not $tag" >&2; exit 1 ;;
+          esac
+          # jq 1.8.2
+          curl -fsSL --retry 3 -o jq https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-arm64
+          echo "2d75340ba57a4b4b4c8708a21c2dc8e958a48aaa8bba13b27f77f6e4c0eca07e  jq" | shasum -a 256 -c -
+          install -m 755 jq "$RUNNER_TEMP/bin/jq"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: the pull request, as data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - name: run the plugin in nerd's sandbox
+        working-directory: pr
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: ../trusted/scripts/review.sh "$BASE" ../out trial
+
   label:
-    needs: review
-    if: needs.review.outputs.auto == 'yes'
+    needs: [review, trial]
+    if: needs.review.outputs.auto == 'yes' && needs.trial.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
